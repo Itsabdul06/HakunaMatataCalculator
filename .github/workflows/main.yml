@@ -1,10 +1,10 @@
-name: Build EXE
+name: Build CCTV Calculator EXE
 
 on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:  # Add this line to enable manual trigger
+  workflow_dispatch:
     inputs:
       build_type:
         description: 'Build type'
@@ -15,12 +15,16 @@ on:
           - debug
           - release
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     runs-on: windows-latest
     
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
     
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -29,19 +33,63 @@ jobs:
     
     - name: Install dependencies
       run: |
+        python -m pip install --upgrade pip
         pip install pyinstaller
         pip install openpyxl
     
+    - name: Find Python script
+      id: finder
+      run: |
+        # Find the main Python file (exclude setup.py, test files, etc.)
+        $pythonFile = Get-ChildItem -Filter "*.py" | Where-Object { $_.Name -notlike "test_*" -and $_.Name -notlike "*_test*" -and $_.Name -ne "setup.py" } | Select-Object -First 1
+        
+        if ($pythonFile) {
+          echo "found=$($pythonFile.Name)" >> $env:GITHUB_OUTPUT
+          echo "✅ Found Python file: $($pythonFile.Name)"
+        } else {
+          echo "❌ No Python file found!"
+          exit 1
+        }
+    
     - name: Build executable
       run: |
+        $pythonFile = "${{ steps.finder.outputs.found }}"
+        echo "Building: $pythonFile"
+        
         pyinstaller --onefile `
           --name="CCTV_Calculator" `
           --hidden-import=openpyxl `
           --hidden-import=openpyxl.cell._writer `
-          cctv_calc.py
+          --hidden-import=openpyxl.cell.reader `
+          --hidden-import=openpyxl.xml `
+          --hidden-import=openpyxl.xml.functions `
+          --collect-all=openpyxl `
+          $pythonFile
+    
+    - name: Verify build
+      run: |
+        echo "Build completed. Checking for executable..."
+        if (Test-Path "dist\CCTV_Calculator.exe") {
+          echo "✅ Executable created successfully!"
+          dir dist\
+        } else {
+          echo "❌ Executable not found!"
+          exit 1
+        }
     
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: CCTV_Calculator
-        path: dist/
+        name: CCTV_Calculator_Windows
+        path: dist\CCTV_Calculator.exe
+        retention-days: 30
+
+    - name: Upload debug info (if build fails)
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-debug-info
+        path: |
+          build\
+          *.spec
+        retention-days: 7
