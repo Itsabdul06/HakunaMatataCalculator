@@ -4,6 +4,16 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:  # Add this line to enable manual trigger
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: false
+        default: 'release'
+        type: choice
+        options:
+          - debug
+          - release
 
 jobs:
   build:
@@ -28,7 +38,6 @@ jobs:
           --name="CCTV_Calculator" `
           --hidden-import=openpyxl `
           --hidden-import=openpyxl.cell._writer `
-          --add-data="system_data.json;." `
           cctv_calc.py
     
     - name: Upload artifact
