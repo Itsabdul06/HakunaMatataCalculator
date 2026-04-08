@@ -27,17 +27,17 @@ DEFAULT_HDD_PRICES = {
 }
 
 DEFAULT_NVR_DATA = [
-    {"Name": "1U RAID",        "SKU": "ADVER00N0NP16G", "CH": 32,  "MB": 50,   "Slots": 4,  "Price": 3750.0,  "mode": "RAID",   "brand": "American Dynamics"},
-    {"Name": "2U 64 Ch",       "SKU": "ADVER12R0N2H",   "CH": 64,  "MB": 300,  "Slots": 6,  "Price": 10416.7, "mode": "RAID",   "brand": "American Dynamics"},
-    {"Name": "2U 100 Ch",      "SKU": "ADVER00RN2J",    "CH": 100, "MB": 600,  "Slots": 8,  "Price": 11666.7, "mode": "RAID",   "brand": "American Dynamics"},
-    {"Name": "2U 128 Ch",      "SKU": "ADVER72R5N2H",   "CH": 128, "MB": 600,  "Slots": 12, "Price": 25000.0, "mode": "RAID",   "brand": "American Dynamics"},
-    {"Name": "2U Rack 175 Ch", "SKU": "ADVER02RDK",     "CH": 175, "MB": 1000, "Slots": 12, "Price": 13854.2, "mode": "RAID",   "brand": "American Dynamics"},
-    {"Name": "2U Rack 200 Ch", "SKU": "ADVER02RDK",     "CH": 200, "MB": 1500, "Slots": 12, "Price": 12812.5, "mode": "RAID",   "brand": "American Dynamics"},
-    {"Name": "Micro NVR",      "SKU": "ADVEM00N0NP8AH", "CH": 8,   "MB": 80,   "Slots": 1,  "Price": 1500.0,  "mode": "JBOD",   "brand": "American Dynamics"},
-    {"Name": "Desktop JBOD",   "SKU": "ADVED00N0N5H",   "CH": 50,  "MB": 200,  "Slots": 2,  "Price": 2291.7,  "mode": "JBOD",   "brand": "American Dynamics"},
-    {"Name": "2U 75 Ch",       "SKU": "ADVER00N0N2J",   "CH": 75,  "MB": 400,  "Slots": 4,  "Price": 5312.5,  "mode": "JBOD",   "brand": "American Dynamics"},
-    {"Name": "Holis 8 Ch",     "SKU": "HRN-08013P",     "CH": 8,   "MB": 160,  "Slots": 1,  "Price": 520.85,  "mode": "JBOD",   "brand": "Holis"},
-    {"Name": "Holis 16 Ch",    "SKU": "HRN-16023P",     "CH": 16,  "MB": 320,  "Slots": 2,  "Price": 770.85,  "mode": "JBOD",   "brand": "Holis"},
+    {"Name": "1U RAID",        "SKU": "ADVER00N0NP16G", "CH": 32,  "Mb": 50,   "Slots": 4,  "Price": 3750.0,  "mode": "RAID",   "brand": "American Dynamics"},
+    {"Name": "2U 64 Ch",       "SKU": "ADVER12R0N2H",   "CH": 64,  "Mb": 300,  "Slots": 6,  "Price": 10416.7, "mode": "RAID",   "brand": "American Dynamics"},
+    {"Name": "2U 100 Ch",      "SKU": "ADVER00RN2J",    "CH": 100, "Mb": 600,  "Slots": 8,  "Price": 11666.7, "mode": "RAID",   "brand": "American Dynamics"},
+    {"Name": "2U 128 Ch",      "SKU": "ADVER72R5N2H",   "CH": 128, "Mb": 600,  "Slots": 12, "Price": 25000.0, "mode": "RAID",   "brand": "American Dynamics"},
+    {"Name": "2U Rack 175 Ch", "SKU": "ADVER02RDK",     "CH": 175, "Mb": 1000, "Slots": 12, "Price": 13854.2, "mode": "RAID",   "brand": "American Dynamics"},
+    {"Name": "2U Rack 200 Ch", "SKU": "ADVER02RDK",     "CH": 200, "Mb": 1500, "Slots": 12, "Price": 12812.5, "mode": "RAID",   "brand": "American Dynamics"},
+    {"Name": "Micro NVR",      "SKU": "ADVEM00N0NP8AH", "CH": 8,   "Mb": 80,   "Slots": 1,  "Price": 1500.0,  "mode": "JBOD",   "brand": "American Dynamics"},
+    {"Name": "Desktop JBOD",   "SKU": "ADVED00N0N5H",   "CH": 50,  "Mb": 200,  "Slots": 2,  "Price": 2291.7,  "mode": "JBOD",   "brand": "American Dynamics"},
+    {"Name": "2U 75 Ch",       "SKU": "ADVER00N0N2J",   "CH": 75,  "Mb": 400,  "Slots": 4,  "Price": 5312.5,  "mode": "JBOD",   "brand": "American Dynamics"},
+    {"Name": "Holis 8 Ch",     "SKU": "HRN-08013P",     "CH": 8,   "Mb": 160,  "Slots": 1,  "Price": 520.85,  "mode": "JBOD",   "brand": "Holis"},
+    {"Name": "Holis 16 Ch",    "SKU": "HRN-16023P",     "CH": 16,  "Mb": 320,  "Slots": 2,  "Price": 770.85,  "mode": "JBOD",   "brand": "Holis"},
 ]
 
 # ─────────────────────────── Colors & Fonts ────────────────────────────────
@@ -66,7 +66,7 @@ FONT_LRGE = ("Segoe UI", 11, "bold")
 
 # ─────────────────────────── Core Logic ────────────────────────────────────
 def get_best_hdd(required_tb, slots, parity, price_dict):
-    """Find the most cost-effective HDD configuration (all drives same size)"""
+    """Find the most cost-effective HDD configuration for a single NVR"""
     best_cost, best_cfg = float('inf'), None
     
     for cap in sorted(price_dict.keys()):
@@ -99,6 +99,45 @@ def get_best_hdd(required_tb, slots, parity, price_dict):
             }
     
     return best_cfg
+
+def calculate_nvr_cost(nvr, cameras_assigned, raid_mode, hdd_prices):
+    """Calculate cost for a single NVR with assigned cameras"""
+    if not cameras_assigned:
+        return None
+    
+    total_storage = sum(c[2] for c in cameras_assigned)
+    total_bandwidth = sum(c[1] for c in cameras_assigned)
+    camera_count = len(cameras_assigned)
+    
+    # Check limits
+    if camera_count > nvr["CH"]:
+        return None
+    if total_bandwidth > nvr["Mb"]:
+        return None
+    
+    # Get RAID parity
+    parity = 0 if raid_mode == "JBOD" else (1 if raid_mode == "RAID 5" else 2)
+    
+    # Get best HDD configuration
+    hdd_config = get_best_hdd(total_storage, nvr["Slots"], parity, hdd_prices)
+    if hdd_config is None:
+        return None
+    
+    # Count camera types
+    cam_counts = {}
+    for c in cameras_assigned:
+        cam_counts[c[0]] = cam_counts.get(c[0], 0) + 1
+    
+    return {
+        "nvr": nvr,
+        "cameras": cameras_assigned,
+        "camera_count": camera_count,
+        "cam_breakdown": cam_counts,
+        "total_storage": total_storage,
+        "total_bandwidth": total_bandwidth,
+        "hdd_config": hdd_config,
+        "cost": nvr["Price"] + hdd_config["cost"]
+    }
 
 # ─────────────────────────── Widget Helpers ────────────────────────────────
 def mk_frame(parent, bg=SURFACE, **kw):
@@ -199,12 +238,12 @@ class CCTVApp:
         s.map("Treeview.Heading", relief=[("active", "flat")])
         s.configure("Vertical.TScrollbar", background=BORDER, troughcolor=SURFACE, arrowcolor=TEXT3, borderwidth=0)
         s.configure("Horizontal.TScrollbar", background=BORDER, troughcolor=SURFACE, arrowcolor=TEXT3, borderwidth=0)
-        s.configure("TCombobox",
+        s.configure("TCoMbobox",
                     fieldbackground=SURFACE2, background=SURFACE2,
                     foreground=TEXT, bordercolor=BORDER,
                     arrowcolor=ACCENT, selectbackground=SURFACE2,
                     selectforeground=TEXT)
-        s.map("TCombobox",
+        s.map("TCoMbobox",
               fieldbackground=[("readonly", SURFACE2)],
               foreground=[("readonly", TEXT)])
 
@@ -212,7 +251,7 @@ class CCTVApp:
         hdr = mk_frame(self.root, bg=BG)
         hdr.pack(fill="x", padx=24, pady=(18, 0))
         mk_label(hdr, "CCTV Master Calculator", font=FONT_H1, fg=WHITE, bg=BG).pack(side="left")
-        mk_label(hdr, "  v35.3", font=FONT_BODY, fg=TEXT3, bg=BG).pack(side="left", pady=(6, 0))
+        mk_label(hdr, "  v36.0", font=FONT_BODY, fg=TEXT3, bg=BG).pack(side="left", pady=(6, 0))
         sep(self.root).pack(fill="x", padx=24, pady=10)
 
         self.nb = ttk.Notebook(self.root, style="TNotebook")
@@ -294,16 +333,16 @@ class CCTVApp:
             count = self.ents["Count"].get().strip()
             if not count:
                 raise ValueError("Count cannot be empty")
-            mbps = self.ents["Mbps/cam"].get().strip()
-            if not mbps:
+            Mbps = self.ents["Mbps/cam"].get().strip()
+            if not Mbps:
                 raise ValueError("Mbps/cam cannot be empty")
             storage = self.ents["Storage TB/cam"].get().strip()
             if not storage:
                 raise ValueError("Storage TB/cam cannot be empty")
-            float(count); float(mbps); float(storage)
+            float(count); float(Mbps); float(storage)
             if float(count) <= 0:
                 raise ValueError("Count must be positive")
-            if float(mbps) <= 0:
+            if float(Mbps) <= 0:
                 raise ValueError("Mbps/cam must be positive")
             if float(storage) <= 0:
                 raise ValueError("Storage TB/cam must be positive")
@@ -315,7 +354,7 @@ class CCTVApp:
         if sel:
             self.tree.delete(sel[0])
         tag = "even" if len(self.tree.get_children()) % 2 == 0 else "odd"
-        self.tree.insert("", "end", values=(name, count, mbps, storage), tags=(tag,))
+        self.tree.insert("", "end", values=(name, count, Mbps, storage), tags=(tag,))
         self.refresh_nvr_dropdowns()
 
     def delete_camera(self):
@@ -339,7 +378,7 @@ class CCTVApp:
 
         mk_label(row1, "Mode:", bg=SURFACE, fg=TEXT2).pack(side="left", padx=(0, 6))
         self.auto_mode = tk.StringVar(value="AUTO")
-        rb_auto = tk.Radiobutton(row1, text="Auto (find best NVR combo)", variable=self.auto_mode, value="AUTO",
+        rb_auto = tk.Radiobutton(row1, text="Auto (find best NVR coMbo)", variable=self.auto_mode, value="AUTO",
                                  bg=SURFACE, fg=TEXT2, selectcolor=SURFACE2,
                                  activebackground=SURFACE, activeforeground=TEXT,
                                  font=FONT_BODY, command=self._on_mode_change)
@@ -352,7 +391,7 @@ class CCTVApp:
 
         mk_label(row1, "RAID Level:", bg=SURFACE, fg=TEXT2).pack(side="left", padx=(16, 6))
         self.raid_var = tk.StringVar(value="JBOD")
-        cb_raid = ttk.Combobox(row1, textvariable=self.raid_var, width=10,
+        cb_raid = ttk.CoMbobox(row1, textvariable=self.raid_var, width=10,
                                state="readonly", values=["JBOD", "RAID 5", "RAID 6"])
         cb_raid.pack(side="left")
 
@@ -360,26 +399,26 @@ class CCTVApp:
         row2.pack(fill="x", padx=14, pady=(0, 10))
         mk_label(row2, "NVR Brand:", bg=SURFACE, fg=TEXT2).pack(side="left", padx=(0, 6))
         self.brand_filter = tk.StringVar(value="All")
-        brand_combo = ttk.Combobox(row2, textvariable=self.brand_filter, width=20,
+        brand_coMbo = ttk.CoMbobox(row2, textvariable=self.brand_filter, width=20,
                                    state="readonly", values=["All", "American Dynamics", "Holis"])
-        brand_combo.bind("<<ComboboxSelected>>", lambda x: self.refresh_nvr_dropdowns())
-        brand_combo.pack(side="left")
+        brand_coMbo.bind("<<CoMboboxSelected>>", laMbda x: self.refresh_nvr_dropdowns())
+        brand_coMbo.pack(side="left")
         mk_label(row2, "(Filters NVRs shown below)", bg=SURFACE, fg=TEXT3, font=FONT_BODY).pack(side="left", padx=(10, 0))
 
         self.manual_frame = mk_frame(ctrl, bg=SURFACE)
         self.manual_frame.pack(fill="x", padx=14, pady=(0, 10))
         manual_label = mk_label(self.manual_frame, "Manual NVR Selection:", font=FONT_H2, fg=ACCENT, bg=SURFACE)
         manual_label.pack(anchor="w", pady=(0, 10))
-        self.manual_combos = []
+        self.manual_coMbos = []
         for i in range(6):
             row_frame = mk_frame(self.manual_frame, bg=SURFACE)
             row_frame.pack(fill="x", pady=2)
             mk_label(row_frame, f"NVR {i+1}:", bg=SURFACE, fg=TEXT2, width=8).pack(side="left", padx=(0, 5))
             var = tk.StringVar(value="None")
-            cb = ttk.Combobox(row_frame, textvariable=var, width=30,
+            cb = ttk.CoMbobox(row_frame, textvariable=var, width=30,
                              state="readonly", values=["None"])
             cb.pack(side="left", padx=(0, 10))
-            self.manual_combos.append(cb)
+            self.manual_coMbos.append(cb)
         self.manual_frame.pack_forget()
 
         btn_row = mk_frame(ctrl, bg=SURFACE)
@@ -435,11 +474,11 @@ class CCTVApp:
         else:
             filtered_nvrs = [n for n in self.nvr_list if n.get("brand", "") == brand]
         names = ["None"] + [n["Name"] for n in filtered_nvrs]
-        for combo in self.manual_combos:
-            current = combo.get()
-            combo['values'] = names
+        for coMbo in self.manual_coMbos:
+            current = coMbo.get()
+            coMbo['values'] = names
             if current not in names:
-                combo.set("None")
+                coMbo.set("None")
 
     def show_progress(self):
         if self.progress_window and self.progress_window.winfo_exists():
@@ -476,7 +515,7 @@ class CCTVApp:
             row=0, column=0, columnspan=13, sticky="w", padx=14, pady=(10, 8))
 
         self.nf = {}
-        fields = [("Name", 14), ("SKU", 14), ("CH", 6), ("MB", 6), ("Slots", 6), ("Price", 8)]
+        fields = [("Name", 14), ("SKU", 14), ("CH", 6), ("Mb", 6), ("Slots", 6), ("Price", 8)]
         for col, (f, w) in enumerate(fields):
             mk_label(add_f, f, bg=SURFACE, fg=TEXT2).grid(row=1, column=col*2, sticky="w", padx=(14 if col==0 else 6, 3))
             var = tk.StringVar()
@@ -486,11 +525,11 @@ class CCTVApp:
 
         self.na = tk.StringVar(value="RAID")
         mk_label(add_f, "RAID/JBOD", bg=SURFACE, fg=TEXT2).grid(row=1, column=12, sticky="w", padx=(6, 3))
-        ttk.Combobox(add_f, textvariable=self.na, width=7,
+        ttk.CoMbobox(add_f, textvariable=self.na, width=7,
                      state="readonly", values=["RAID", "JBOD"]).grid(row=1, column=13, padx=(0, 6), pady=(0, 10))
         self.nf_brand = tk.StringVar(value="American Dynamics")
         mk_label(add_f, "Brand:", bg=SURFACE, fg=TEXT2).grid(row=1, column=14, sticky="w", padx=(6, 3))
-        ttk.Combobox(add_f, textvariable=self.nf_brand, width=15,
+        ttk.CoMbobox(add_f, textvariable=self.nf_brand, width=15,
                      state="readonly", values=["American Dynamics", "Holis"]).grid(row=1, column=15, padx=(0, 6), pady=(0, 10))
         mk_btn(add_f, "ADD TO DATABASE", self.add_new_nvr, style="primary").grid(
             row=1, column=16, padx=(6, 14), pady=(0, 10))
@@ -514,13 +553,13 @@ class CCTVApp:
         def _on_resize(e):
             canvas.itemconfig(self.nvr_canvas_win, width=e.width)
         canvas.bind("<Configure>", _on_resize)
-        self.nvr_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        self.nvr_frame.bind("<Configure>", laMbda e: canvas.configure(scrollregion=canvas.bbox("all")))
         self.nvr_canvas = canvas
         self.nvr_price_entries = []
 
         hdr = mk_frame(self.nvr_frame, bg=SURFACE3)
         hdr.pack(fill="x", pady=(0, 2))
-        for txt, w in [("Name", 140), ("SKU", 120), ("Channels", 65), ("Max MB/s", 70),
+        for txt, w in [("Name", 140), ("SKU", 120), ("Channels", 65), ("Max Mbps", 70),
                        ("HDD Slots", 70), ("Price ($)", 85), ("Mode", 55), ("Brand", 90), ("", 80)]:
             mk_label(hdr, txt, font=FONT_H3, fg=ACCENT, bg=SURFACE3, width=w//8, anchor="w").pack(
                 side="left", padx=8, pady=6)
@@ -541,7 +580,7 @@ class CCTVApp:
             mk_label(row, n["Name"], bg=row_bg, fg=TEXT, width=18).pack(side="left", padx=(12,4), pady=4)
             mk_label(row, n["SKU"], bg=row_bg, fg=TEXT2, font=FONT_MONO, width=14).pack(side="left", padx=4)
             mk_label(row, str(n["CH"]), bg=row_bg, fg=TEXT, width=8, anchor="center").pack(side="left", padx=4)
-            mk_label(row, str(n["MB"]), bg=row_bg, fg=TEXT, width=8, anchor="center").pack(side="left", padx=4)
+            mk_label(row, str(n["Mb"]), bg=row_bg, fg=TEXT, width=8, anchor="center").pack(side="left", padx=4)
             mk_label(row, str(n["Slots"]), bg=row_bg, fg=TEXT, width=8, anchor="center").pack(side="left", padx=4)
 
             price_var = tk.StringVar(value=f"{n['Price']:.2f}")
@@ -554,7 +593,7 @@ class CCTVApp:
             mk_label(row, n.get("brand", "American Dynamics"), bg=row_bg, fg=TEXT2,
                      width=11, anchor="center").pack(side="left", padx=4)
 
-            mk_btn(row, "Delete", lambda idx=i: self.delete_nvr(idx), style="danger").pack(
+            mk_btn(row, "Delete", laMbda idx=i: self.delete_nvr(idx), style="danger").pack(
                 side="right", padx=(4, 12))
 
         save_row = mk_frame(self.nvr_frame, bg=SURFACE2)
@@ -572,9 +611,9 @@ class CCTVApp:
             ch_str = self.nf["CH"].get().strip()
             if not ch_str:
                 raise ValueError("Channels required")
-            mb_str = self.nf["MB"].get().strip()
-            if not mb_str:
-                raise ValueError("Max MB/s required")
+            Mb_str = self.nf["Mb"].get().strip()
+            if not Mb_str:
+                raise ValueError("Max Mbps required")
             slots_str = self.nf["Slots"].get().strip()
             if not slots_str:
                 raise ValueError("HDD Slots required")
@@ -583,12 +622,12 @@ class CCTVApp:
                 raise ValueError("Price required")
 
             row = {
-                "Name": name, "SKU": sku, "CH": int(ch_str), "MB": int(mb_str),
+                "Name": name, "SKU": sku, "CH": int(ch_str), "Mb": int(Mb_str),
                 "Slots": int(slots_str), "Price": float(price_str),
                 "mode": self.na.get(), "brand": self.nf_brand.get(),
             }
 
-            if row["CH"] <= 0 or row["MB"] <= 0 or row["Slots"] <= 0 or row["Price"] <= 0:
+            if row["CH"] <= 0 or row["Mb"] <= 0 or row["Slots"] <= 0 or row["Price"] <= 0:
                 raise ValueError("All values must be positive")
 
             self.nvr_list.append(row)
@@ -668,11 +707,11 @@ class CCTVApp:
             try:
                 name = row[0].strip()
                 count = int(row[1])
-                mbps = float(row[2])
+                Mbps = float(row[2])
                 storage = float(row[3])
-                if not name or count <= 0 or mbps <= 0 or storage <= 0:
+                if not name or count <= 0 or Mbps <= 0 or storage <= 0:
                     raise ValueError("Invalid camera data")
-                cameras.append((name, count, mbps, storage))
+                cameras.append((name, count, Mbps, storage))
             except (ValueError, IndexError) as e:
                 messagebox.showerror("Error", f"Invalid camera data: {e}")
                 return
@@ -730,30 +769,19 @@ class CCTVApp:
         if not compatible_nvrs:
             compatible_nvrs = available_nvrs
 
-        # Calculate totals
-        total_cameras = sum(c[1] for c in cameras)
-        total_storage = sum(c[1] * c[3] for c in cameras)
-        total_bandwidth = sum(c[1] * c[2] for c in cameras)
-
         # Sort by price (cheapest first)
-        compatible_nvrs.sort(key=lambda x: x["Price"])
+        compatible_nvrs.sort(key=laMbda x: x["Price"])
 
         best_result = None
         best_cost = float('inf')
 
-        # Try different numbers of NVRs (1 to 5)
+        # Try different nuMbers of NVRs (1 to 4)
         for nvr_count in range(1, min(5, len(compatible_nvrs) + 2)):
-            for combo in itertools.combinations_with_replacement(compatible_nvrs, nvr_count):
-                nvr_list = list(combo)
-
-                # Quick feasibility
-                if sum(n["CH"] for n in nvr_list) < total_cameras:
-                    continue
-                if sum(n["MB"] for n in nvr_list) < total_bandwidth:
-                    continue
-
-                # Optimized distribution based on storage capacity
-                result = self.distribute_cameras_optimized(cameras, nvr_list)
+            for coMbo in itertools.coMbinations_with_replacement(compatible_nvrs, nvr_count):
+                nvr_list = list(coMbo)
+                
+                # Try different HDD size strategies
+                result = self.distribute_cameras_intelligent(cameras, nvr_list)
                 if result:
                     total = sum(u["cost"] for u in result)
                     if total < best_cost:
@@ -764,8 +792,8 @@ class CCTVApp:
 
     def manual_calculate(self, cameras):
         selected_nvrs = []
-        for combo in self.manual_combos:
-            nvr_name = combo.get()
+        for coMbo in self.manual_coMbos:
+            nvr_name = coMbo.get()
             if nvr_name != "None" and nvr_name:
                 nvr = next((n for n in self.nvr_list if n["Name"] == nvr_name), None)
                 if nvr:
@@ -773,112 +801,178 @@ class CCTVApp:
         if not selected_nvrs:
             messagebox.showwarning("Warning", "Select at least one NVR.")
             return None
-        return self.distribute_cameras_optimized(cameras, selected_nvrs)
+        return self.distribute_cameras_intelligent(cameras, selected_nvrs)
 
-    def distribute_cameras_optimized(self, cameras, nvrs):
-        """Optimized distribution - proportional to each NVR's storage capacity"""
+    def distribute_cameras_intelligent(self, cameras, nvrs):
+        """Intelligent distribution considering both bandwidth and storage constraints"""
         # Flatten cameras
         flat_cams = []
-        for name, count, mbps, storage in cameras:
+        for name, count, Mbps, storage in cameras:
             for _ in range(count):
-                flat_cams.append((name, mbps, storage))
-
+                flat_cams.append((name, Mbps, storage))
+        
         total_cams = len(flat_cams)
+        total_bandwidth = sum(c[1] for c in flat_cams)
+        total_storage = sum(c[2] for c in flat_cams)
         n_nvrs = len(nvrs)
-
-        # Calculate maximum storage capacity for each NVR (using largest HDD)
+        
+        # Calculate max bandwidth and max storage for each NVR (using largest HDD)
         max_hdd = max(self.hdd_prices.keys())
-        nvr_capacities = [nvr["Slots"] * max_hdd for nvr in nvrs]
-        total_capacity = sum(nvr_capacities)
-
-        if total_capacity == 0:
-            return None
-
-        # Calculate target cameras per NVR based on capacity proportion
-        target_cams = []
+        
+        nvr_bandwidths = [nvr["Mb"] for nvr in nvrs]
+        nvr_channels = [nvr["CH"] for nvr in nvrs]
+        nvr_slots = [nvr["Slots"] for nvr in nvrs]
+        
+        # Try different distribution strategies
+        best_result = None
+        best_cost = float('inf')
+        
+        # Strategy 1: Distribute by bandwidth proportion
+        total_bw_cap = sum(nvr_bandwidths)
+        if total_bw_cap > 0:
+            target_cams = []
+            remaining = total_cams
+            
+            for i in range(n_nvrs - 1):
+                # Calculate target based on bandwidth proportion
+                proportion = nvr_bandwidths[i] / total_bw_cap
+                target = int(round(total_cams * proportion))
+                # Respect channel limit
+                target = min(target, nvr_channels[i])
+                # Ensure at least 1 camera and not too many
+                target = max(1, min(target, remaining - (n_nvrs - i - 1)))
+                target_cams.append(target)
+                remaining -= target
+            
+            target_cams.append(min(remaining, nvr_channels[-1]))
+            
+            result = self.try_distribution(flat_cams, nvrs, target_cams)
+            if result:
+                total = sum(u["cost"] for u in result)
+                if total < best_cost:
+                    best_cost = total
+                    best_result = result
+        
+        # Strategy 2: Distribute by storage proportion
+        total_storage_cap = sum(nvr_slots) * max_hdd
+        if total_storage_cap > 0:
+            target_cams = []
+            remaining = total_cams
+            
+            for i in range(n_nvrs - 1):
+                proportion = (nvr_slots[i] * max_hdd) / total_storage_cap
+                target = int(round(total_cams * proportion))
+                target = min(target, nvr_channels[i])
+                target = max(1, min(target, remaining - (n_nvrs - i - 1)))
+                target_cams.append(target)
+                remaining -= target
+            
+            target_cams.append(min(remaining, nvr_channels[-1]))
+            
+            result = self.try_distribution(flat_cams, nvrs, target_cams)
+            if result:
+                total = sum(u["cost"] for u in result)
+                if total < best_cost:
+                    best_cost = total
+                    best_result = result
+        
+        # Strategy 3: Even distribution
+        base = total_cams // n_nvrs
+        remainder = total_cams % n_nvrs
+        target_cams = [base + (1 if i < remainder else 0) for i in range(n_nvrs)]
+        # Respect channel limits
+        for i in range(n_nvrs):
+            target_cams[i] = min(target_cams[i], nvr_channels[i])
+        
+        result = self.try_distribution(flat_cams, nvrs, target_cams)
+        if result:
+            total = sum(u["cost"] for u in result)
+            if total < best_cost:
+                best_cost = total
+                best_result = result
+        
+        # Strategy 4: Try to put as many cameras as possible on the cheapest NVR per camera
+        # Sort NVRs by price per channel (cheapest first)
+        nvrs_sorted = sorted(enumerate(nvrs), key=laMbda x: x[1]["Price"] / x[1]["CH"] if x[1]["CH"] > 0 else float('inf'))
+        target_cams = [0] * n_nvrs
         remaining = total_cams
         
-        for i in range(n_nvrs - 1):
-            proportion = nvr_capacities[i] / total_capacity
-            target = int(round(total_cams * proportion))
-            # Ensure at least 1 camera and not too many
-            target = max(1, min(target, remaining - (n_nvrs - i - 1)))
-            target_cams.append(target)
-            remaining -= target
+        for idx, nvr in nvrs_sorted:
+            if remaining <= 0:
+                break
+            max_for_nvr = min(nvr["CH"], remaining)
+            # Calculate bandwidth limit
+            avg_bandwidth = total_bandwidth / total_cams
+            max_by_bw = int(nvr["Mb"] / avg_bandwidth) if avg_bandwidth > 0 else nvr["CH"]
+            max_for_nvr = min(max_for_nvr, max_by_bw)
+            take = min(max_for_nvr, remaining)
+            target_cams[idx] = take
+            remaining -= take
         
-        target_cams.append(remaining)  # Last NVR gets remaining
+        result = self.try_distribution(flat_cams, nvrs, target_cams)
+        if result:
+            total = sum(u["cost"] for u in result)
+            if total < best_cost:
+                best_cost = total
+                best_result = result
+        
+        return best_result
 
+    def try_distribution(self, flat_cams, nvrs, target_cams):
+        """Try a specific camera distribution"""
+        # Adjust target_cams to ensure total equals nuMber of cameras
+        total_target = sum(target_cams)
+        total_cams = len(flat_cams)
+        
+        if total_target != total_cams:
+            # Adjust the largest target
+            diff = total_cams - total_target
+            max_idx = target_cams.index(max(target_cams))
+            target_cams[max_idx] += diff
+        
+        # Ensure no negative values
+        target_cams = [max(0, t) for t in target_cams]
+        
         # Distribute cameras
         result = []
         idx = 0
+        raid_mode = self.raid_var.get()
         
         for i, nvr in enumerate(nvrs):
             take = target_cams[i]
             if take <= 0:
                 continue
-
+            
+            if idx + take > len(flat_cams):
+                return None
+            
             cam_slice = flat_cams[idx:idx + take]
             idx += take
-
-            # Calculate requirements
-            total_storage = sum(c[2] for c in cam_slice)
-            total_bandwidth = sum(c[1] for c in cam_slice)
-
-            # Check limits
-            if len(cam_slice) > nvr["CH"]:
+            
+            # Calculate NVR cost
+            nvr_result = calculate_nvr_cost(nvr, cam_slice, raid_mode, self.hdd_prices)
+            if nvr_result is None:
                 return None
-            if total_bandwidth > nvr["MB"]:
-                return None
-
-            # Get HDD config
-            parity = 0 if self.raid_var.get() == "JBOD" else (1 if self.raid_var.get() == "RAID 5" else 2)
-            hdd = get_best_hdd(total_storage, nvr["Slots"], parity, self.hdd_prices)
-            if hdd is None:
-                return None
-
-            # Count camera types
-            cam_counts = {}
-            for c in cam_slice:
-                cam_counts[c[0]] = cam_counts.get(c[0], 0) + 1
-
-            result.append({
-                "nvr": nvr,
-                "cameras": cam_slice,
-                "camera_count": take,
-                "cam_breakdown": cam_counts,
-                "total_storage": total_storage,
-                "total_bandwidth": total_bandwidth,
-                "hdd_config": hdd,
-                "cost": nvr["Price"] + hdd["cost"]
-            })
-
-        # Verify all cameras were assigned
-        if idx != total_cams:
+            result.append(nvr_result)
+        
+        if idx != len(flat_cams):
             return None
-
-        # Verify total storage capacity (optional adjustment)
-        # If any NVR is overloaded, try to rebalance
-        for i, unit in enumerate(result):
-            max_capacity = unit["nvr"]["Slots"] * max_hdd
-            if unit["total_storage"] > max_capacity * 0.95:  # Within 95% of capacity
-                # This NVR is near capacity, which is good
-                pass
-
+        
         return result
 
     def display_results(self, result):
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
         total = sum(u["cost"] for u in result)
         lines = []
-    
+
         def write(text, tag="value"):
             lines.append((text, tag))
-    
+
         write("=" * 72 + "\n", "divider")
         write(f" CCTV DESIGN REPORT  —  {now}\n", "header")
         write(f" SYSTEM TOTAL: ${total:,.2f}\n", "cost")
         write("=" * 72 + "\n", "divider")
-    
+
         for i, u in enumerate(result, 1):
             nvr = u["nvr"]
             hdd = u["hdd_config"]
@@ -888,12 +982,12 @@ class CCTVApp:
             write(f"{self.raid_var.get()}\n", "value")
             write(f"  Load:     ", "label")
             
-            # Both values are in Mbps - no conversion needed
-            mbps_total = u["total_bandwidth"]
-            mbps_capacity = nvr["MB"]
-            load_pct = (mbps_total / mbps_capacity * 100) if mbps_capacity > 0 else 0
+            # Both values are in Mbps
+            Mbps_total = u["total_bandwidth"]
+            Mbps_capacity = nvr["Mb"]
+            load_pct = (Mbps_total / Mbps_capacity * 100) if Mbps_capacity > 0 else 0
             
-            write(f"{mbps_total:.1f} Mbps  ({load_pct:.1f}% of {nvr['MB']} Mbps capacity)\n", "value")
+            write(f"{Mbps_total:.1f} Mbps  ({load_pct:.1f}% of {nvr['Mb']} Mbps capacity)\n", "value")
             
             write(f"  Cameras:  ", "label")
             write(f"{u['camera_count']} total  ", "value")
@@ -905,21 +999,22 @@ class CCTVApp:
             write(f"  Storage:  ", "label")
             drive_str = f"{hdd['qty']} × {hdd['cap']} TB"
             total_cap = hdd['qty'] * hdd['cap']
+            usable_tb = hdd['data'] * hdd['cap']
             write(f"{drive_str}  = {total_cap:.1f} TB  ", "value")
-            write(f"(usable: {hdd['data'] * hdd['cap']:.1f} TB)\n", "label")
+            write(f"(usable: {usable_tb:.1f} TB)\n", "label")
             write(f"  Cost:     ", "label")
             write(f"NVR ${nvr['Price']:,.2f}  +  HDD ${hdd['cost']:,.2f}  =  ${u['cost']:,.2f}\n", "cost")
-    
+
         write("\n" + "=" * 72 + "\n", "divider")
         write(f" GRAND TOTAL:  ${total:,.2f}\n", "cost")
         write("=" * 72 + "\n", "divider")
-    
+
         self.res_txt.config(state="normal")
         self.res_txt.delete("1.0", "end")
         for text, tag in lines:
             self.res_txt.insert("end", text, tag)
         self.res_txt.config(state="disabled")
-    
+
         self.last_report = "".join(t for t, _ in lines)
         self.nb.select(self.tabs[1])
 
