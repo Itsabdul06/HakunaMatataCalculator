@@ -35,10 +35,19 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install pyinstaller
-        pip install openpyxl
+        pip install xlwings
+    
+    - name: List files for debugging
+      run: |
+        echo "Current directory contents:"
+        dir
+        echo ""
+        echo "Python files:"
+        dir *.py
     
     - name: Find Python script
       id: finder
+      shell: pwsh
       run: |
         # Find the main Python file (exclude setup.py, test files, etc.)
         $pythonFile = Get-ChildItem -Filter "*.py" | Where-Object { $_.Name -notlike "test_*" -and $_.Name -notlike "*_test*" -and $_.Name -ne "setup.py" } | Select-Object -First 1
@@ -52,18 +61,19 @@ jobs:
         }
     
     - name: Build executable
+      shell: pwsh
       run: |
         $pythonFile = "${{ steps.finder.outputs.found }}"
         echo "Building: $pythonFile"
         
         pyinstaller --onefile `
           --name="CCTV_Calculator" `
-          --hidden-import=openpyxl `
-          --hidden-import=openpyxl.cell._writer `
-          --hidden-import=openpyxl.cell.reader `
-          --hidden-import=openpyxl.xml `
-          --hidden-import=openpyxl.xml.functions `
-          --collect-all=openpyxl `
+          --hidden-import=xlwings `
+          --hidden-import=win32com `
+          --hidden-import=win32api `
+          --hidden-import=win32con `
+          --hidden-import=win32com.client `
+          --collect-all=xlwings `
           $pythonFile
     
     - name: Verify build
