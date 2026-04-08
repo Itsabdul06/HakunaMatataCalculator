@@ -23,7 +23,7 @@ DATA_FILE = "system_data.json"
 DEFAULT_HDD_PRICES = {
     1: 87.0, 2: 131.0, 3: 145.0, 4: 239.0,
     6: 375.0, 8: 427.0, 10: 500.0, 12: 614.0,
-    14: 1114.0, 18: 1291.0, 22: 1226.0, 24: 1568.0, 26: 2600.0,
+    14: 1114.0, 18: 1291.0, 22: 1145.85, 24: 1568.0, 26: 1385.0,
 }
 
 DEFAULT_NVR_DATA = [
@@ -228,7 +228,7 @@ class CCTVApp:
         hdr = mk_frame(self.root, bg=BG)
         hdr.pack(fill="x", padx=24, pady=(18, 0))
         mk_label(hdr, "CCTV Master Calculator", font=FONT_H1, fg=WHITE, bg=BG).pack(side="left")
-        mk_label(hdr, "  v34.5", font=FONT_BODY, fg=TEXT3, bg=BG).pack(side="left", pady=(6, 0))
+        mk_label(hdr, "  v34.6", font=FONT_BODY, fg=TEXT3, bg=BG).pack(side="left", pady=(6, 0))
         sep(self.root).pack(fill="x", padx=24, pady=10)
 
         self.nb = ttk.Notebook(self.root, style="TNotebook")
@@ -716,10 +716,15 @@ class CCTVApp:
 
     # ── Calculation engine ────────────────────────────────────────────────
     def calculate_engine(self, cams, hw_cfg, split_ratio=None):
+        """
+        Calculate camera distribution across NVRs.
+        Supports mixing different NVR types (e.g., Desktop JBOD + Micro NVR).
+        """
         n_units = len(hw_cfg)
         u_list = []
         cur_c = 0
 
+        # Flatten cameras into individual units
         flat_cams = []
         for cam in cams:
             cam_name = cam[0]
@@ -730,67 +735,183 @@ class CCTVApp:
                 flat_cams.append((cam_name, 1, cam_mbps, cam_tb))
 
         total_cameras = len(flat_cams)
-
-        for i, hw in enumerate(hw_cfg):
-            if split_ratio is None:
-                remaining_units = n_units - i
-                remaining_cameras = total_cameras - cur_c
-                take = math.ceil(remaining_cameras / remaining_units)
-            else:
-                take = math.ceil(len(flat_cams) * split_ratio[i])
-                take = min(take, len(flat_cams) - cur_c)
-
-            u_brk = flat_cams[cur_c:cur_c + take]
-            cur_c += take
-
-            u_mb = sum(c[2] for c in u_brk)
-            u_tb = sum(c[3] for c in u_brk)
-            u_c = len(u_brk)
-
-            if u_c > hw["CH"]:
-                return None
-
-            u_mb_per_sec = u_mb / 8
-            if u_mb_per_sec > hw["MB"]:
-                return None
-
-            raid = self.raid_var.get()
-            parity = 0 if raid == "JBOD" else (1 if raid == "RAID 5" else 2)
-            mode_str = raid
-
-            hd = get_best_hdd(u_tb, hw["Slots"], parity, self.hdd_prices)
-            if hd is None:
-                return None
-
-            cam_breakdown = {}
-            for c in u_brk:
-                cam_breakdown[c[0]] = cam_breakdown.get(c[0], 0) + 1
-
-            drive_str = f"{hd['qty']} × {hd['cap']} TB"
-            total_cap = hd['qty'] * hd['cap']
-
-            u_list.append({
-                "name": hw["Name"],
-                "m": hw,
-                "mode": mode_str,
-                "mb": u_mb,
-                "load": (u_mb_per_sec / hw["MB"] * 100) if hw["MB"] > 0 else 0,
-                "c_total": u_c,
-                "cam_breakdown": cam_breakdown,
-                "qty": hd["qty"],
-                "cap": hd["cap"],
-                "total_tb": total_cap,
-                "usable_tb": hd["data"] * hd["cap"],
-                "cost": hw["Price"] + hd["cost"],
-                "h": hd,
-                "total_storage": u_tb,
-                "drive_config": drive_str,
-                "is_mixed": False
-            })
-
+        
+        if split_ratio is None and n_units > 1:
+            # Intelligent distribution based on NVR capabilities
+            # Calculate maximum storage each NVR can provide
+            max_hdd_size = max(self.hdd_prices.keys())
+            nvr_max_storage = []
+            for hw in hw_cfg:
+                nvr_max_storage.append(hw["Slots"] * max_hdd_size)
+            
+            total_max_storage = sum(nvr_max_storage)
+            
+            # Sort NVRs by storage capacity (largest first) for better distribution
+            nvr_indices = sorted(range(n_units), key=lambda i: nvr_max_storage[i], reverse=True)
+            
+            # Calculate target cameras per NVR based on storage proportion
+            target_cameras = [0] * n_units
+            remaining_cameras = total_cameras
+            
+            for idx in nvr_indices:
+                if remaining_cameras <= 0:
+                    target_cameras[idx] = 0
+                    continue
+                    
+                # Calculate proportion of total storage this NVR represents
+                if total_max_storage > 0:
+                    proportion = nvr_max_storage[idx] / total_max_storage
+                else:
+                    proportion = 1.0 / n_units
+                
+                # Calculate target cameras based on proportion
+                target = int(round(total_cameras * proportion))
+                
+                # Ensure minimum 1 camera if there's capacity
+                if target == 0 and nvr_max_storage[idx] > 0 and remaining_cameras > 0:
+                    target = 1
+                
+                # Don't take more than remaining cameras
+                target = min(target, remaining_cameras)
+                
+                # For the last NVR, take all remaining
+                if remaining_cameras - target < n_units - (idx + 1):
+                    target = remaining_cameras
+                
+                target_cameras[idx] = target
+                remaining_cameras -= target
+            
+            # Distribute cameras according to target
+            for i, hw in enumerate(hw_cfg):
+                take = target_cameras[i]
+                
+                if take <= 0:
+                    # No cameras for this NVR
+                    take = 0
+                    u_brk = []
+                else:
+                    u_brk = flat_cams[cur_c:cur_c + take]
+                    cur_c += take
+                
+                # Calculate totals
+                u_mb = sum(c[2] for c in u_brk) if u_brk else 0
+                u_tb = sum(c[3] for c in u_brk) if u_brk else 0
+                u_c = len(u_brk)
+                
+                # Skip if no cameras assigned (can happen with extra NVRs)
+                if u_c == 0:
+                    # Still need to account for this NVR? 
+                    # If it has no cameras, we should skip it
+                    continue
+                
+                # Check channel capacity
+                if u_c > hw["CH"]:
+                    return None
+                
+                # Check bandwidth capacity
+                u_mb_per_sec = u_mb / 8 if u_mb > 0 else 0
+                if u_mb_per_sec > hw["MB"]:
+                    return None
+                
+                # Get RAID mode
+                raid = self.raid_var.get()
+                parity = 0 if raid == "JBOD" else (1 if raid == "RAID 5" else 2)
+                mode_str = raid
+                
+                # Get best HDD configuration
+                hd = get_best_hdd(u_tb, hw["Slots"], parity, self.hdd_prices)
+                if hd is None:
+                    return None
+                
+                # Count cameras by type
+                cam_breakdown = {}
+                for c in u_brk:
+                    cam_breakdown[c[0]] = cam_breakdown.get(c[0], 0) + 1
+                
+                drive_str = f"{hd['qty']} × {hd['cap']} TB"
+                total_cap = hd['qty'] * hd['cap']
+                
+                u_list.append({
+                    "name": hw["Name"],
+                    "m": hw,
+                    "mode": mode_str,
+                    "mb": u_mb,
+                    "load": (u_mb_per_sec / hw["MB"] * 100) if hw["MB"] > 0 and u_mb_per_sec > 0 else 0,
+                    "c_total": u_c,
+                    "cam_breakdown": cam_breakdown,
+                    "qty": hd["qty"],
+                    "cap": hd["cap"],
+                    "total_tb": total_cap,
+                    "usable_tb": hd["data"] * hd["cap"],
+                    "cost": hw["Price"] + hd["cost"],
+                    "h": hd,
+                    "total_storage": u_tb,
+                    "drive_config": drive_str,
+                    "is_mixed": False
+                })
+        else:
+            # Original distribution for manual mode or single NVR
+            for i, hw in enumerate(hw_cfg):
+                if split_ratio is None:
+                    remaining_units = n_units - i
+                    remaining_cameras = total_cameras - cur_c
+                    take = math.ceil(remaining_cameras / remaining_units) if remaining_units > 0 else remaining_cameras
+                else:
+                    take = math.ceil(len(flat_cams) * split_ratio[i])
+                    take = min(take, len(flat_cams) - cur_c)
+                
+                u_brk = flat_cams[cur_c:cur_c + take]
+                cur_c += take
+                
+                u_mb = sum(c[2] for c in u_brk)
+                u_tb = sum(c[3] for c in u_brk)
+                u_c = len(u_brk)
+                
+                if u_c > hw["CH"]:
+                    return None
+                
+                u_mb_per_sec = u_mb / 8
+                if u_mb_per_sec > hw["MB"]:
+                    return None
+                
+                raid = self.raid_var.get()
+                parity = 0 if raid == "JBOD" else (1 if raid == "RAID 5" else 2)
+                mode_str = raid
+                
+                hd = get_best_hdd(u_tb, hw["Slots"], parity, self.hdd_prices)
+                if hd is None:
+                    return None
+                
+                cam_breakdown = {}
+                for c in u_brk:
+                    cam_breakdown[c[0]] = cam_breakdown.get(c[0], 0) + 1
+                
+                drive_str = f"{hd['qty']} × {hd['cap']} TB"
+                total_cap = hd['qty'] * hd['cap']
+                
+                u_list.append({
+                    "name": hw["Name"],
+                    "m": hw,
+                    "mode": mode_str,
+                    "mb": u_mb,
+                    "load": (u_mb_per_sec / hw["MB"] * 100) if hw["MB"] > 0 else 0,
+                    "c_total": u_c,
+                    "cam_breakdown": cam_breakdown,
+                    "qty": hd["qty"],
+                    "cap": hd["cap"],
+                    "total_tb": total_cap,
+                    "usable_tb": hd["data"] * hd["cap"],
+                    "cost": hw["Price"] + hd["cost"],
+                    "h": hd,
+                    "total_storage": u_tb,
+                    "drive_config": drive_str,
+                    "is_mixed": False
+                })
+        
+        # Verify all cameras were assigned
         if cur_c < total_cameras:
             return None
-
+        
         return u_list
 
     def run_logic(self):
@@ -844,8 +965,9 @@ class CCTVApp:
                 best_cfg, best_cost = None, float("inf")
 
                 total_combinations = 0
-                max_combinations = 5000
+                max_combinations = 10000
 
+                # Try different numbers of NVRs (1 to 6)
                 for n_u in range(1, 7):
                     for combo in itertools.combinations_with_replacement(pool, n_u):
                         total_combinations += 1
@@ -854,6 +976,7 @@ class CCTVApp:
                         
                         hw_c = list(combo)
 
+                        # Quick feasibility checks
                         max_ch = sum(n["CH"] for n in hw_c)
                         if max_ch < total_cams:
                             continue
@@ -880,6 +1003,7 @@ class CCTVApp:
                 txt = best_cfg
 
             else:
+                # Manual mode
                 active_hw = []
                 for combo in self.manual_combos:
                     nvr_name = combo.get()
