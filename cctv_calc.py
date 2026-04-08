@@ -853,12 +853,12 @@ class CCTVApp:
             # Load the template
             wb = load_workbook(template_file)
             
-            # Check if "offer" sheet exists
-            if "offer" not in wb.sheetnames:
-                messagebox.showerror("Error", "Sheet 'offer' not found in the template!")
+            # Check if "Offer" sheet exists
+            if "Offer" not in wb.sheetnames:
+                messagebox.showerror("Error", "Sheet 'Offer' not found in the template!")
                 return
             
-            ws = wb["offer"]
+            ws = wb["Offer"]
             
             # Get the Header 1 style from the template (if it exists)
             header_style = None
@@ -954,7 +954,7 @@ class CCTVApp:
             messagebox.showinfo("Success", 
                 f"Excel file has been updated successfully!\n\n"
                 f"File: {os.path.basename(template_file)}\n"
-                f"Sheet: offer\n"
+                f"Sheet: Offer\n"
                 f"Rows added: {len(excel_rows)}")
             
         except Exception as e:
