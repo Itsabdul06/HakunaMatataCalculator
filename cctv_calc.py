@@ -238,12 +238,12 @@ class CCTVApp:
         s.map("Treeview.Heading", relief=[("active", "flat")])
         s.configure("Vertical.TScrollbar", background=BORDER, troughcolor=SURFACE, arrowcolor=TEXT3, borderwidth=0)
         s.configure("Horizontal.TScrollbar", background=BORDER, troughcolor=SURFACE, arrowcolor=TEXT3, borderwidth=0)
-        s.configure("Tcombobox",
+        s.configure("TCombobox",
                     fieldbackground=SURFACE2, background=SURFACE2,
                     foreground=TEXT, bordercolor=BORDER,
                     arrowcolor=ACCENT, selectbackground=SURFACE2,
                     selectforeground=TEXT)
-        s.map("Tcombobox",
+        s.map("TCombobox",
               fieldbackground=[("readonly", SURFACE2)],
               foreground=[("readonly", TEXT)])
 
@@ -391,7 +391,7 @@ class CCTVApp:
 
         mk_label(row1, "RAID Level:", bg=SURFACE, fg=TEXT2).pack(side="left", padx=(16, 6))
         self.raid_var = tk.StringVar(value="JBOD")
-        cb_raid = ttk.combobox(row1, textvariable=self.raid_var, width=10,
+        cb_raid = ttk.Combobox(row1, textvariable=self.raid_var, width=10,
                                state="readonly", values=["JBOD", "RAID 5", "RAID 6"])
         cb_raid.pack(side="left")
 
@@ -399,9 +399,9 @@ class CCTVApp:
         row2.pack(fill="x", padx=14, pady=(0, 10))
         mk_label(row2, "NVR Brand:", bg=SURFACE, fg=TEXT2).pack(side="left", padx=(0, 6))
         self.brand_filter = tk.StringVar(value="All")
-        brand_combo = ttk.combobox(row2, textvariable=self.brand_filter, width=20,
+        brand_combo = ttk.Combobox(row2, textvariable=self.brand_filter, width=20,
                                    state="readonly", values=["All", "American Dynamics", "Holis"])
-        brand_combo.bind("<<comboboxSelected>>", lambda x: self.refresh_nvr_dropdowns())
+        brand_combo.bind("<<ComboboxSelected>>", lambda x: self.refresh_nvr_dropdowns())
         brand_combo.pack(side="left")
         mk_label(row2, "(Filters NVRs shown below)", bg=SURFACE, fg=TEXT3, font=FONT_BODY).pack(side="left", padx=(10, 0))
 
@@ -415,7 +415,7 @@ class CCTVApp:
             row_frame.pack(fill="x", pady=2)
             mk_label(row_frame, f"NVR {i+1}:", bg=SURFACE, fg=TEXT2, width=8).pack(side="left", padx=(0, 5))
             var = tk.StringVar(value="None")
-            cb = ttk.combobox(row_frame, textvariable=var, width=30,
+            cb = ttk.Combobox(row_frame, textvariable=var, width=30,
                              state="readonly", values=["None"])
             cb.pack(side="left", padx=(0, 10))
             self.manual_coMbos.append(cb)
@@ -525,11 +525,11 @@ class CCTVApp:
 
         self.na = tk.StringVar(value="RAID")
         mk_label(add_f, "RAID/JBOD", bg=SURFACE, fg=TEXT2).grid(row=1, column=12, sticky="w", padx=(6, 3))
-        ttk.combobox(add_f, textvariable=self.na, width=7,
+        ttk.Combobox(add_f, textvariable=self.na, width=7,
                      state="readonly", values=["RAID", "JBOD"]).grid(row=1, column=13, padx=(0, 6), pady=(0, 10))
         self.nf_brand = tk.StringVar(value="American Dynamics")
         mk_label(add_f, "Brand:", bg=SURFACE, fg=TEXT2).grid(row=1, column=14, sticky="w", padx=(6, 3))
-        ttk.combobox(add_f, textvariable=self.nf_brand, width=15,
+        ttk.Combobox(add_f, textvariable=self.nf_brand, width=15,
                      state="readonly", values=["American Dynamics", "Holis"]).grid(row=1, column=15, padx=(0, 6), pady=(0, 10))
         mk_btn(add_f, "ADD TO DATABASE", self.add_new_nvr, style="primary").grid(
             row=1, column=16, padx=(6, 14), pady=(0, 10))
