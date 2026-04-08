@@ -749,7 +749,7 @@ class CCTVApp:
                 # Quick feasibility
                 if sum(n["CH"] for n in nvr_list) < total_cameras:
                     continue
-                if sum(n["MB"] for n in nvr_list) < (total_bandwidth / 8):
+                if sum(n["MB"] for n in nvr_list) < total_bandwidth:
                     continue
 
                 # Optimized distribution based on storage capacity
@@ -827,7 +827,7 @@ class CCTVApp:
             # Check limits
             if len(cam_slice) > nvr["CH"]:
                 return None
-            if (total_bandwidth / 8) > nvr["MB"]:
+            if total_bandwidth > nvr["MB"]:
                 return None
 
             # Get HDD config
@@ -870,15 +870,15 @@ class CCTVApp:
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
         total = sum(u["cost"] for u in result)
         lines = []
-
+    
         def write(text, tag="value"):
             lines.append((text, tag))
-
+    
         write("=" * 72 + "\n", "divider")
         write(f" CCTV DESIGN REPORT  —  {now}\n", "header")
         write(f" SYSTEM TOTAL: ${total:,.2f}\n", "cost")
         write("=" * 72 + "\n", "divider")
-
+    
         for i, u in enumerate(result, 1):
             nvr = u["nvr"]
             hdd = u["hdd_config"]
@@ -887,9 +887,14 @@ class CCTVApp:
             write(f"  Mode:     ", "label")
             write(f"{self.raid_var.get()}\n", "value")
             write(f"  Load:     ", "label")
-            mbps_per_sec = u["total_bandwidth"] / 8
-            load_pct = (mbps_per_sec / nvr["MB"] * 100) if nvr["MB"] > 0 else 0
-            write(f"{u['total_bandwidth']:.1f} Mbps  ({load_pct:.1f}% of {nvr['MB']} MB/s capacity)\n", "value")
+            
+            # Both values are in Mbps - no conversion needed
+            mbps_total = u["total_bandwidth"]
+            mbps_capacity = nvr["MB"]
+            load_pct = (mbps_total / mbps_capacity * 100) if mbps_capacity > 0 else 0
+            
+            write(f"{mbps_total:.1f} Mbps  ({load_pct:.1f}% of {nvr['MB']} Mbps capacity)\n", "value")
+            
             write(f"  Cameras:  ", "label")
             write(f"{u['camera_count']} total  ", "value")
             if u["cam_breakdown"]:
@@ -904,17 +909,17 @@ class CCTVApp:
             write(f"(usable: {hdd['data'] * hdd['cap']:.1f} TB)\n", "label")
             write(f"  Cost:     ", "label")
             write(f"NVR ${nvr['Price']:,.2f}  +  HDD ${hdd['cost']:,.2f}  =  ${u['cost']:,.2f}\n", "cost")
-
+    
         write("\n" + "=" * 72 + "\n", "divider")
         write(f" GRAND TOTAL:  ${total:,.2f}\n", "cost")
         write("=" * 72 + "\n", "divider")
-
+    
         self.res_txt.config(state="normal")
         self.res_txt.delete("1.0", "end")
         for text, tag in lines:
             self.res_txt.insert("end", text, tag)
         self.res_txt.config(state="disabled")
-
+    
         self.last_report = "".join(t for t, _ in lines)
         self.nb.select(self.tabs[1])
 
