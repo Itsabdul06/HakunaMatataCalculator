@@ -68,86 +68,54 @@ FONT_LRGE = ("Segoe UI", 11, "bold")
 MAX_NVR_COMBOS = 6
 
 # ─────────────────────────── Core Logic ────────────────────────────────────
+# ─────────────────────────── Core Logic ────────────────────────────────────
 def get_best_hdd(required_tb, slots, parity, price_dict):
     """
     Find the most cost-effective HDD configuration.
-    For JBOD (parity=0): Can mix different HDD sizes
-    For RAID (parity>0): All HDDs must be same size
+    All HDDs in an NVR must be the same capacity (no mixing allowed).
+    For JBOD (parity=0): Same size drives only
+    For RAID (parity>0): Same size drives required
     """
-    if parity > 0:
-        # RAID mode - all drives must be same size
-        best_cost, best_cfg = float('inf'), None
-        for cap in sorted(price_dict.keys()):
-            price = price_dict[cap]
-            min_drives = parity + 1
+    best_cost, best_cfg = float('inf'), None
+    
+    # Try each available HDD size
+    for cap in sorted(price_dict.keys()):
+        price = price_dict[cap]
+        min_drives = parity + 1
+        
+        if parity == 0:
+            # JBOD mode - calculate how many drives needed
+            data_req = math.ceil(required_tb / cap)
+            total_drives = data_req
+        else:
+            # RAID mode - data drives + parity drives
             data_req = math.ceil(required_tb / cap)
             total_drives = data_req + parity
-            if total_drives > slots:
-                continue
-            total_drives = max(total_drives, min_drives)
-            cost = total_drives * price
-            if cost < best_cost:
-                best_cost = cost
-                best_cfg = {
-                    "cap": cap,
-                    "qty": total_drives,
-                    "data": data_req,
-                    "cost": cost,
-                    "mixed": False,
-                    "drives": [cap] * total_drives,
-                    "total_capacity": total_drives * cap
-                }
-        return best_cfg
-
-    else:
-        # JBOD mode - can mix different HDD sizes for optimal cost
-        available_sizes = sorted(price_dict.keys())
-        dp = {0: (0, [])}
-
-        for tb in range(1, math.ceil(required_tb) + max(available_sizes)):
-            best_cost = float('inf')
-            best_drives = None
-
-            for size in available_sizes:
-                remaining = max(0, tb - size)
-                if remaining in dp:
-                    cost, drives = dp[remaining]
-                    total_cost = cost + price_dict[size]
-                    new_drives = drives + [size]
-
-                    if len(new_drives) <= slots:
-                        if total_cost < best_cost:
-                            best_cost = total_cost
-                            best_drives = new_drives.copy()
-
-            if best_drives:
-                dp[tb] = (best_cost, best_drives)
-
-        best_cost = float('inf')
-        best_drives = None
-
-        for tb in range(math.ceil(required_tb), math.ceil(required_tb) + max(available_sizes)):
-            if tb in dp:
-                cost, drives = dp[tb]
-                if len(drives) <= slots and cost < best_cost:
-                    best_cost = cost
-                    best_drives = drives
-
-        if best_drives:
-            best_drives.sort(reverse=True)
-            total_capacity = sum(best_drives)
-            return {
-                "cap": best_drives[0],
-                "qty": len(best_drives),
-                "data": len(best_drives),
-                "cost": best_cost,
-                "mixed": len(set(best_drives)) > 1,
-                "drives": best_drives,
-                "total_capacity": total_capacity
+        
+        # Check if we have enough slots
+        if total_drives > slots:
+            continue
+        
+        # Ensure minimum drives for RAID
+        total_drives = max(total_drives, min_drives)
+        
+        # Calculate total cost
+        cost = total_drives * price
+        
+        # Update best configuration
+        if cost < best_cost:
+            best_cost = cost
+            best_cfg = {
+                "cap": cap,
+                "qty": total_drives,
+                "data": data_req,
+                "cost": cost,
+                "mixed": False,
+                "drives": [cap] * total_drives,
+                "total_capacity": total_drives * cap
             }
-
-        return None
-
+    
+    return best_cfg
 # ─────────────────────────── Widget Helpers ────────────────────────────────
 def mk_frame(parent, bg=SURFACE, **kw):
     return tk.Frame(parent, bg=bg, **kw)
@@ -200,7 +168,7 @@ class CCTVApp:
         self.hdd_ents    = {}
         self.nvr_price_entries = []
         self.progress_window = None
-        self.brand_filter = tk.StringVar(value="All")  # Brand filter: All, American Dynamics, Holis
+        self.brand_filter = tk.StringVar(value="All")
 
         self.load_all_data()
         self.setup_ui()
@@ -263,7 +231,7 @@ class CCTVApp:
         hdr = mk_frame(self.root, bg=BG)
         hdr.pack(fill="x", padx=24, pady=(18, 0))
         mk_label(hdr, "CCTV Master Calculator", font=FONT_H1, fg=WHITE, bg=BG).pack(side="left")
-        mk_label(hdr, "  v34.3", font=FONT_BODY, fg=TEXT3, bg=BG).pack(side="left", pady=(6, 0))
+        mk_label(hdr, "  v34.4", font=FONT_BODY, fg=TEXT3, bg=BG).pack(side="left", pady=(6, 0))
         sep(self.root).pack(fill="x", padx=24, pady=10)
 
         self.nb = ttk.Notebook(self.root, style="TNotebook")
@@ -391,7 +359,7 @@ class CCTVApp:
         mk_label(ctrl, "Calculation Settings", font=FONT_H2, fg=ACCENT, bg=SURFACE).pack(
             anchor="w", padx=14, pady=(10, 8))
 
-        # Row 1: Mode and RAID
+        # Row 1: Mode and RAID (using pack only)
         row1 = mk_frame(ctrl, bg=SURFACE)
         row1.pack(fill="x", padx=14, pady=(0, 10))
 
@@ -421,32 +389,33 @@ class CCTVApp:
         
         mk_label(row2, "NVR Brand:", bg=SURFACE, fg=TEXT2).pack(side="left", padx=(0, 6))
         brand_combo = ttk.Combobox(row2, textvariable=self.brand_filter, width=20,
-                                   state="readonly", values=["All", "American Dynamics", "Holis"])
+                                   state="readonly", values=["All", "American Dynamics", "Holis"],
+                                   command=lambda x: self.refresh_nvr_dropdowns())
         brand_combo.pack(side="left")
         mk_label(row2, "(Filters NVRs shown below)", bg=SURFACE, fg=TEXT3, font=FONT_BODY).pack(side="left", padx=(10, 0))
 
-        # Manual NVR selection frame
+        # Manual NVR selection frame (hidden by default)
         self.manual_frame = mk_frame(ctrl, bg=SURFACE)
         self.manual_frame.pack(fill="x", padx=14, pady=(0, 10))
         
-        manual_inner = mk_frame(self.manual_frame, bg=SURFACE)
-        manual_inner.pack(fill="x", padx=14, pady=5)
-        
-        mk_label(manual_inner, "Manual NVR Selection:", font=FONT_H2, fg=ACCENT, bg=SURFACE).grid(
-            row=0, column=0, columnspan=3, sticky="w", pady=(0, 10))
+        # Use pack inside manual frame to avoid grid/pack conflicts
+        manual_label = mk_label(self.manual_frame, "Manual NVR Selection:", font=FONT_H2, fg=ACCENT, bg=SURFACE)
+        manual_label.pack(anchor="w", pady=(0, 10))
         
         self.manual_combos = []
         for i in range(6):
-            mk_label(manual_inner, f"NVR {i+1}:", bg=SURFACE, fg=TEXT2, width=8).grid(
-                row=i+1, column=0, sticky="w", padx=(0, 5), pady=3)
+            row_frame = mk_frame(self.manual_frame, bg=SURFACE)
+            row_frame.pack(fill="x", pady=2)
+            
+            mk_label(row_frame, f"NVR {i+1}:", bg=SURFACE, fg=TEXT2, width=8).pack(side="left", padx=(0, 5))
             
             var = tk.StringVar(value="None")
-            cb = ttk.Combobox(manual_inner, textvariable=var, width=30,
+            cb = ttk.Combobox(row_frame, textvariable=var, width=30,
                              state="readonly", values=["None"])
-            cb.grid(row=i+1, column=1, padx=(0, 10), pady=3, sticky="w")
+            cb.pack(side="left", padx=(0, 10))
             self.manual_combos.append(cb)
         
-        self.manual_frame.grid_remove()
+        self.manual_frame.pack_forget()  # Start hidden
 
         # Buttons row
         btn_row = mk_frame(ctrl, bg=SURFACE)
@@ -493,13 +462,12 @@ class CCTVApp:
         """Handle switching between AUTO and MANUAL modes"""
         if self.auto_mode.get() == "MANUAL":
             self.refresh_nvr_dropdowns()
-            self.manual_frame.grid()
+            self.manual_frame.pack(fill="x", padx=14, pady=(0, 10))
         else:
-            self.manual_frame.grid_remove()
+            self.manual_frame.pack_forget()
 
     def refresh_nvr_dropdowns(self):
         """Update all manual NVR comboboxes with current NVR list (filtered by brand)"""
-        # Filter NVRs by selected brand
         brand = self.brand_filter.get()
         if brand == "All":
             filtered_nvrs = self.nvr_list
@@ -859,14 +827,12 @@ class CCTVApp:
 
         try:
             if self.auto_mode.get() == "AUTO":
-                # Filter by brand
                 brand = self.brand_filter.get()
                 if brand == "All":
                     pool = [n for n in self.nvr_list]
                 else:
                     pool = [n for n in self.nvr_list if n.get("brand", "") == brand]
                 
-                # Further filter by RAID compatibility
                 pool = [n for n in pool if (
                     n.get("mode", "RAID") == "JBOD" and self.raid_var.get() == "JBOD" or
                     n.get("mode", "RAID") == "RAID" and self.raid_var.get() != "JBOD"
@@ -882,9 +848,11 @@ class CCTVApp:
 
                 total_cams = sum(int(c[1]) for c in cams)
                 total_bandwidth = sum(int(c[1]) * float(c[2]) for c in cams)
+                total_storage = sum(int(c[1]) * float(c[3]) for c in cams)
 
                 best_cfg, best_cost = None, float("inf")
 
+                # Try different numbers of NVRs (1 to 6)
                 for n_u in range(1, 7):
                     for combo in itertools.combinations_with_replacement(pool, n_u):
                         hw_c = list(combo)
@@ -895,6 +863,11 @@ class CCTVApp:
 
                         max_bandwidth = sum(n["MB"] for n in hw_c)
                         if max_bandwidth < (total_bandwidth / 8):
+                            continue
+
+                        max_slots = sum(n["Slots"] for n in hw_c)
+                        max_possible_storage = max_slots * max(self.hdd_prices.keys())
+                        if max_possible_storage < total_storage:
                             continue
 
                         res = self.calculate_engine(cams, hw_c, None)
@@ -1121,13 +1094,13 @@ class CCTVApp:
             last_row = ws.used_range.last_cell.row
             if last_row >= current_row:
                 for row in range(current_row, last_row + 1):
-                    ws.range(f"A{row}:U{row}").value = None
+                    ws.range(f"A{row}:M{row}").value = None
 
             for row_data in excel_rows:
                 part_no, qty, sys, solution, category, row_type, header_text = row_data
 
                 if row_type == "header":
-                    ws.range(f"A{current_row}:U{current_row}").value = None
+                    ws.range(f"A{current_row}:M{current_row}").value = None
                     if header_text:
                         ws.range(f"G{current_row}").value = header_text
                     try:
