@@ -638,141 +638,264 @@ class CCTVApp:
         self.save_all_data()
         messagebox.showinfo("Saved", "HDD Prices Updated.")
 
-    # ── Calculation engine ────────────────────────────────────────────────
-    def calculate_engine(self, cams, hw_cfg, split_ratio=None):
-        n_units = len(hw_cfg)
-        u_list  = []
-        cur_c   = 0
+    # ── Fixed Calculation engine ────────────────────────────────────────────────
+def calculate_engine(self, cams, hw_cfg, split_ratio=None):
+    """
+    cams: list of camera row values [name, count, mbps, tb]
+    hw_cfg: list of NVR dicts (one per unit, can repeat)
+    split_ratio: how to distribute cameras across units (None for even distribution)
+    """
+    n_units = len(hw_cfg)
+    u_list = []
+    cur_c = 0
+    
+    # Calculate total requirements
+    total_cameras = sum(int(c[1]) for c in cams)
+    total_bandwidth = sum(int(c[1]) * float(c[2]) for c in cams)
+    total_storage = sum(int(c[1]) * float(c[3]) for c in cams)
+    
+    # For each NVR, calculate its share
+    for i, hw in enumerate(hw_cfg):
+        if split_ratio is None:
+            # Distribute cameras proportionally by storage or count?
+            # Better: distribute by storage requirement to balance HDD usage
+            remaining_units = n_units - i
+            remaining_cameras = total_cameras - cur_c
+            remaining_storage = total_storage - sum(u.get("total_storage", 0) for u in u_list)
+            
+            # Calculate target storage for this NVR based on its slot capacity
+            # This ensures we don't exceed HDD limits
+            max_storage_per_unit = hw["Slots"] * max(self.hdd_prices.keys())
+            target_storage = min(remaining_storage / remaining_units, max_storage_per_unit)
+            
+            # Find cameras that fit within target storage
+            take = 0
+            accumulated_storage = 0
+            for j in range(cur_c, len(cams)):
+                cam_storage = int(cams[j][1]) * float(cams[j][3])
+                if accumulated_storage + cam_storage <= target_storage * 1.1:  # 10% tolerance
+                    accumulated_storage += cam_storage
+                    take += 1
+                else:
+                    break
+            
+            # Ensure we take at least 1 camera if available
+            if take == 0 and cur_c < len(cams):
+                take = 1
+        else:
+            take = math.ceil(len(cams) * split_ratio[i])
+            take = min(take, len(cams) - cur_c)
+        
+        u_brk = cams[cur_c:cur_c + take]
+        cur_c += take
+        
+        # Calculate totals for this NVR
+        u_mb = sum(int(c[1]) * float(c[2]) for c in u_brk)
+        u_tb = sum(int(c[1]) * float(c[3]) for c in u_brk)
+        u_c = sum(int(c[1]) for c in u_brk)
+        
+        # Check channel capacity
+        if u_c > hw["CH"]:
+            return None
+        
+        # Check bandwidth capacity
+        if u_mb > hw["MB"]:
+            return None
+        
+        # Get RAID mode
+        raid = self.raid_var.get()
+        parity = 0 if raid == "JBOD" else (1 if raid == "RAID 5" else 2)
+        mode_str = raid
+        
+        # Get best HDD configuration
+        hd = get_best_hdd(u_tb, hw["Slots"], parity, self.hdd_prices)
+        if hd is None:
+            return None
+        
+        cam_breakdown = {c[0]: int(c[1]) for c in u_brk}
+        u_list.append({
+            "name": hw["Name"],
+            "m": hw,
+            "mode": mode_str,
+            "mb": u_mb,
+            "load": u_mb / hw["MB"] * 100 if hw["MB"] > 0 else 0,
+            "c_total": u_c,
+            "cam_breakdown": cam_breakdown,
+            "qty": hd["qty"],
+            "cap": hd["cap"],
+            "total_tb": hd["qty"] * hd["cap"],
+            "usable_tb": hd["data"] * hd["cap"],
+            "cost": hw["Price"] + hd["cost"],
+            "h": hd,
+            "total_storage": u_tb
+        })
+    
+    # Verify all cameras were assigned
+    if cur_c < len(cams):
+        return None
+    
+    return u_list
 
-        for i, hw in enumerate(hw_cfg):
-            if split_ratio is None:
-                take = math.ceil(len(cams) / n_units) if i < n_units-1 else len(cams) - cur_c
-            else:
-                take = math.ceil(len(cams) * split_ratio[i])
-                take = min(take, len(cams) - cur_c)
-
-            u_brk = cams[cur_c:cur_c + take]
-            cur_c += take
-
-            u_mb  = sum(int(c[1]) * float(c[2]) for c in u_brk)
-            u_tb  = sum(int(c[1]) * float(c[3]) for c in u_brk)
-            u_c   = sum(int(c[1]) for c in u_brk)
-
-            if u_c > hw["CH"]:
-                return None
-
-            raid = self.raid_var.get()
-            parity = 0 if raid == "JBOD" else (1 if raid == "RAID 5" else 2)
-            mode_str = raid
-
-            hd = get_best_hdd(u_tb, hw["Slots"], parity, self.hdd_prices)
-            if hd is None:
-                return None
-
-            if u_mb > hw["MB"]:
-                return None
-
-            cam_breakdown = {c[0]: int(c[1]) for c in u_brk}
-            u_list.append({
-                "name": hw["Name"], "m": hw, "mode": mode_str,
-                "mb": u_mb, "load": u_mb / hw["MB"] * 100 if hw["MB"] > 0 else 0,
-                "c_total": u_c, "cam_breakdown": cam_breakdown,
-                "qty": hd["qty"], "cap": hd["cap"],
-                "total_tb": hd["qty"] * hd["cap"],
-                "cost": hw["Price"] + hd["cost"], "h": hd,
-            })
-
-        return u_list
-
-    def run_logic(self):
-        cams = [self.tree.item(i)["values"] for i in self.tree.get_children()]
-        if not cams:
-            messagebox.showwarning("Warning", "Add cameras first.")
-            return
-
-        for cam in cams:
-            try:
-                if not cam[0].strip():
-                    raise ValueError("Camera name cannot be empty")
-                count = int(cam[1])
-                mbps = float(cam[2])
-                storage = float(cam[3])
-                if count <= 0 or mbps <= 0 or storage <= 0:
-                    raise ValueError("All camera values must be positive")
-            except (ValueError, IndexError) as e:
-                messagebox.showerror("Error", f"Invalid camera data: {cam[0] if cam else 'Unknown'}\n{e}")
-                return
-
-        self.calc_status.config(text="Calculating...", fg=GOLD)
-        self.show_progress()
-        self.root.update()
-
+def run_logic(self):
+    """Fixed auto-mode that properly evaluates multi-NVR configurations"""
+    cams = [self.tree.item(i)["values"] for i in self.tree.get_children()]
+    if not cams:
+        messagebox.showwarning("Warning", "Add cameras first.")
+        return
+    
+    # Validate camera data
+    for cam in cams:
         try:
-            if self.auto_mode.get() == "AUTO":
-                pool = [n for n in self.nvr_list if (
-                    n.get("mode", "RAID") == "JBOD" and self.raid_var.get() == "JBOD" or
-                    n.get("mode", "RAID") == "RAID" and self.raid_var.get() != "JBOD"
-                )]
-                if not pool:
-                    pool = list(self.nvr_list)
-
-                total_cams = sum(int(c[1]) for c in cams)
-                best_cfg, best_cost = None, float("inf")
-                max_nvrs = min(MAX_NVR_COMBOS, len(pool))
-                
-                for n_u in range(1, max_nvrs + 1):
-                    for combo in itertools.combinations_with_replacement(pool, n_u):
-                        hw_c = list(combo)
-                        max_ch = sum(n["CH"] for n in hw_c)
-                        if max_ch < total_cams:
-                            continue
-                        res = self.calculate_engine(cams, hw_c, None)
-                        if res is None:
-                            continue
-                        cost = sum(x["cost"] for x in res)
-                        if cost < best_cost:
-                            best_cost = cost
-                            best_cfg  = res
-                txt = best_cfg
-            else:
-                active_hw = []
-                for combo in self.manual_combos:
-                    nvr_name = combo.get()
-                    if nvr_name != "None":
-                        nvr = next((n for n in self.nvr_list if n["Name"] == nvr_name), None)
-                        if nvr:
-                            active_hw.append(nvr)
-                
-                if not active_hw:
-                    messagebox.showwarning("Warning", "Select at least one NVR.")
-                    self.calc_status.config(text="", fg=TEXT2)
-                    self.hide_progress()
-                    return
-                
-                txt = self.calculate_engine(cams, active_hw, None)
-
-            if not txt:
-                self._show_result_error("ERROR: No valid configuration found.\n\nPossible reasons:\n• HDD sizes cannot meet storage requirements\n• NVR channel/slot limits exceeded\n• No compatible NVRs available for selected RAID mode")
-                self.calc_status.config(text="No solution found", fg=RED)
+            if not cam[0].strip():
+                raise ValueError("Camera name cannot be empty")
+            count = int(cam[1])
+            mbps = float(cam[2])
+            storage = float(cam[3])
+            if count <= 0 or mbps <= 0 or storage <= 0:
+                raise ValueError("All camera values must be positive")
+        except (ValueError, IndexError) as e:
+            messagebox.showerror("Error", f"Invalid camera data: {cam[0] if cam else 'Unknown'}\n{e}")
+            return
+    
+    self.calc_status.config(text="Calculating...", fg=GOLD)
+    self.show_progress()
+    self.root.update()
+    
+    try:
+        if self.auto_mode.get() == "AUTO":
+            # Filter NVRs by RAID compatibility
+            pool = [n for n in self.nvr_list if (
+                n.get("mode", "RAID") == "JBOD" and self.raid_var.get() == "JBOD" or
+                n.get("mode", "RAID") == "RAID" and self.raid_var.get() != "JBOD"
+            )]
+            if not pool:
+                pool = list(self.nvr_list)
+            
+            # Sort pool by price per channel or price per slot for better optimization
+            # This helps find cheaper combinations first
+            pool.sort(key=lambda x: x["Price"] / x["CH"] if x["CH"] > 0 else float('inf'))
+            
+            total_cams = sum(int(c[1]) for c in cams)
+            total_storage = sum(int(c[1]) * float(c[3]) for c in cams)
+            total_bandwidth = sum(int(c[1]) * float(c[2]) for c in cams)
+            
+            best_cfg, best_cost = None, float("inf")
+            best_nvr_count = None
+            
+            # Try different numbers of NVRs
+            max_nvrs = min(MAX_NVR_COMBOS, len(pool) * 2)  # Allow up to 2x pool size for duplicates
+            
+            for n_u in range(1, max_nvrs + 1):
+                # For each NVR count, try combinations
+                for combo in itertools.combinations_with_replacement(pool, n_u):
+                    hw_c = list(combo)
+                    
+                    # Quick feasibility checks before full calculation
+                    max_ch = sum(n["CH"] for n in hw_c)
+                    if max_ch < total_cams:
+                        continue
+                    
+                    max_bandwidth = sum(n["MB"] for n in hw_c)
+                    if max_bandwidth < total_bandwidth:
+                        continue
+                    
+                    max_slots = sum(n["Slots"] for n in hw_c)
+                    max_hdd_storage = max_slots * max(self.hdd_prices.keys())
+                    if max_hdd_storage < total_storage:
+                        continue
+                    
+                    # Try different camera distribution strategies
+                    # Strategy 1: Even distribution by count
+                    res1 = self.calculate_engine(cams, hw_c, None)
+                    if res1:
+                        cost1 = sum(x["cost"] for x in res1)
+                        if cost1 < best_cost:
+                            best_cost = cost1
+                            best_cfg = res1
+                            best_nvr_count = n_u
+                    
+                    # Strategy 2: Try to balance by storage (for better HDD utilization)
+                    if n_u > 1:
+                        # Calculate storage per camera
+                        cam_storages = [int(c[1]) * float(c[3]) for c in cams]
+                        total_storage = sum(cam_storages)
+                        target_per_nvr = total_storage / n_u
+                        
+                        # Create distribution ratios based on storage
+                        ratios = []
+                        accumulated = 0
+                        for i in range(n_u - 1):
+                            target = target_per_nvr * (i + 1)
+                            # Find camera index that gets us close to target
+                            cumsum = 0
+                            for j, s in enumerate(cam_storages):
+                                cumsum += s
+                                if cumsum >= target:
+                                    ratios.append((j + 1) / len(cams))
+                                    break
+                        ratios.append(1.0)  # Last one takes all remaining
+                        
+                        # Convert ratios to differences
+                        diff_ratios = [ratios[0]] + [ratios[i] - ratios[i-1] for i in range(1, len(ratios))]
+                        
+                        res2 = self.calculate_engine(cams, hw_c, diff_ratios)
+                        if res2:
+                            cost2 = sum(x["cost"] for x in res2)
+                            if cost2 < best_cost:
+                                best_cost = cost2
+                                best_cfg = res2
+                                best_nvr_count = n_u
+            
+            txt = best_cfg
+            
+            # Debug output (remove in production)
+            if txt:
+                print(f"Selected configuration with {best_nvr_count} NVR(s)")
+                for i, unit in enumerate(txt):
+                    print(f"  Unit {i+1}: {unit['name']} - ${unit['cost']:,.2f}")
+                print(f"  Total: ${best_cost:,.2f}")
+            
+        else:
+            # Manual mode - unchanged
+            active_hw = []
+            for combo in self.manual_combos:
+                nvr_name = combo.get()
+                if nvr_name != "None":
+                    nvr = next((n for n in self.nvr_list if n["Name"] == nvr_name), None)
+                    if nvr:
+                        active_hw.append(nvr)
+            
+            if not active_hw:
+                messagebox.showwarning("Warning", "Select at least one NVR.")
+                self.calc_status.config(text="", fg=TEXT2)
                 self.hide_progress()
                 return
-
-            self.last_calculation_result = {
-                "cameras": cams,
-                "nvr_config": txt,
-                "raid_mode": self.raid_var.get()
-            }
             
-            self.generate_detailed_report(txt)
-            total_cost = sum(x["cost"] for x in txt)
-            self.calc_status.config(text=f"Done — Total: ${total_cost:,.2f}", fg=GREEN)
-
-        except Exception as e:
-            self._show_result_error(f"ERROR: {str(e)}")
-            self.calc_status.config(text="Error", fg=RED)
-        finally:
+            txt = self.calculate_engine(cams, active_hw, None)
+        
+        if not txt:
+            self._show_result_error("ERROR: No valid configuration found.\n\nPossible reasons:\n• HDD sizes cannot meet storage requirements\n• NVR channel/slot limits exceeded\n• No compatible NVRs available for selected RAID mode")
+            self.calc_status.config(text="No solution found", fg=RED)
             self.hide_progress()
-
+            return
+        
+        self.last_calculation_result = {
+            "cameras": cams,
+            "nvr_config": txt,
+            "raid_mode": self.raid_var.get()
+        }
+        
+        self.generate_detailed_report(txt)
+        total_cost = sum(x["cost"] for x in txt)
+        self.calc_status.config(text=f"Done — Total: ${total_cost:,.2f}", fg=GREEN)
+        
+    except Exception as e:
+        self._show_result_error(f"ERROR: {str(e)}")
+        self.calc_status.config(text="Error", fg=RED)
+        import traceback
+        traceback.print_exc()  # Print full error for debugging
+    finally:
+        self.hide_progress()
     def _show_result_error(self, msg):
         self.res_txt.config(state="normal")
         self.res_txt.delete("1.0", "end")
@@ -780,24 +903,27 @@ class CCTVApp:
         self.res_txt.config(state="disabled")
 
     def generate_detailed_report(self, cfg):
-        now    = datetime.now().strftime("%Y-%m-%d %H:%M")
-        total  = sum(u["cost"] for u in cfg)
-        lines  = []
-
+        now = datetime.now().strftime("%Y-%m-%d %H:%M")
+        total = sum(u["cost"] for u in cfg)
+        lines = []
+        
         def write(text, tag="value"):
             lines.append((text, tag))
-
+        
         write("=" * 72 + "\n", "divider")
         write(f" CCTV DESIGN REPORT  —  {now}\n", "header")
         write(f" SYSTEM TOTAL: ${total:,.2f}\n", "cost")
         write("=" * 72 + "\n", "divider")
-
+        
         for i, u in enumerate(cfg, 1):
             write(f"\nUNIT #{i}: {u['name']}\n", "best")
             write("-" * 50 + "\n", "divider")
-            write(f"  Mode:     ", "label"); write(f"{u['mode']}\n", "value")
-            write(f"  Load:     ", "label"); write(f"{u['mb']:.1f} Mbps  ({u['load']:.1f}% of {u['m']['MB']} MB/s capacity)\n", "value")
-            write(f"  Cameras:  ", "label"); write(f"{u['c_total']} total  ", "value")
+            write(f"  Mode:     ", "label")
+            write(f"{u['mode']}\n", "value")
+            write(f"  Load:     ", "label")
+            write(f"{u['mb']:.1f} Mbps  ({u['load']:.1f}% of {u['m']['MB']} MB/s capacity)\n", "value")
+            write(f"  Cameras:  ", "label")
+            write(f"{u['c_total']} total  ", "value")
             if u["cam_breakdown"]:
                 parts = ",  ".join(f"{n}: {c}" for n, c in u["cam_breakdown"].items())
                 write(f"({parts})\n", "value")
@@ -805,20 +931,20 @@ class CCTVApp:
                 write("\n", "value")
             write(f"  Storage:  ", "label")
             write(f"{u['qty']} × {u['cap']} TB  = {u['total_tb']} TB  ", "value")
-            write(f"(usable: {u['h']['data']} × {u['cap']} = {u['h']['data']*u['cap']} TB)\n", "label")
+            write(f"(usable: {u['usable_tb']:.1f} TB)\n", "label")
             write(f"  Cost:     ", "label")
             write(f"NVR ${u['m']['Price']:,.2f}  +  HDD ${u['h']['cost']:,.2f}  =  ${u['cost']:,.2f}\n", "cost")
-
+        
         write("\n" + "=" * 72 + "\n", "divider")
         write(f" GRAND TOTAL:  ${total:,.2f}\n", "cost")
         write("=" * 72 + "\n", "divider")
-
+        
         self.res_txt.config(state="normal")
         self.res_txt.delete("1.0", "end")
         for text, tag in lines:
             self.res_txt.insert("end", text, tag)
         self.res_txt.config(state="disabled")
-
+        
         self.last_report = "".join(t for t, _ in lines)
         self.nb.select(self.tabs[1])
 
