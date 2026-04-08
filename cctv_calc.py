@@ -10,10 +10,9 @@ from tkinter import ttk, messagebox, filedialog
 import math, itertools, json, os
 from datetime import datetime
 
-# Try to import openpyxl for Excel export
+# Try to import xlwings for Excel export
 try:
-    from openpyxl import load_workbook
-    from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+    import xlwings as xw
     EXCEL_AVAILABLE = True
 except ImportError:
     EXCEL_AVAILABLE = False
@@ -823,20 +822,20 @@ class CCTVApp:
         self.last_report = "".join(t for t, _ in lines)
         self.nb.select(self.tabs[1])
 
-    # ── Excel Export Function ─────────────────────────────────────────────
+    # ── Excel Export Function with xlwings ─────────────────────────────────
     def export_to_excel(self):
-        """Export calculation results to Excel template"""
+        """Export calculation results to Excel template using xlwings (preserves all formatting)"""
         
         # Check if we have calculation results
         if not self.last_calculation_result:
             messagebox.showwarning("Warning", "Run a calculation first before exporting!")
             return
         
-        # Check if openpyxl is available
+        # Check if xlwings is available
         if not EXCEL_AVAILABLE:
             messagebox.showerror("Error", 
-                "Excel export requires openpyxl library.\n\n"
-                "Please install it using:\npip install openpyxl")
+                "Excel export requires xlwings library.\n\n"
+                "Please install it using:\npip install xlwings")
             return
         
         # Ask for template file location
@@ -849,25 +848,66 @@ class CCTVApp:
         if not template_file:
             return
         
-        try:
-            # Load the template
-            wb = load_workbook(template_file)
-            
-            # Check if "Offer" sheet exists
-            if "Offer" not in wb.sheetnames:
-                messagebox.showerror("Error", "Sheet 'Offer' not found in the template!")
+        # Ask user if they want to save as a new file or overwrite
+        save_option = messagebox.askyesno(
+            "Save Option", 
+            "Do you want to save as a new file?\n\n"
+            "• Yes = Save as new file (preserves template)\n"
+            "• No = Overwrite the template file"
+        )
+        
+        output_file = template_file
+        if save_option:
+            # Ask for new file location
+            output_file = filedialog.asksaveasfilename(
+                title="Save Excel File As",
+                defaultextension=".xlsx",
+                filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
+                initialfile=f"CCTV_Quote_{datetime.now().strftime('%Y%m%d_%H%M')}"
+            )
+            if not output_file:
                 return
+        
+        # Show progress
+        progress_msg = tk.Toplevel(self.root)
+        progress_msg.title("Exporting...")
+        progress_msg.configure(bg=SURFACE)
+        progress_msg.geometry("300x80")
+        progress_msg.transient(self.root)
+        progress_msg.grab_set()
+        
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 150
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 40
+        progress_msg.geometry(f"300x80+{x}+{y}")
+        
+        mk_label(progress_msg, "Exporting to Excel...", 
+                font=FONT_H2, fg=ACCENT, bg=SURFACE).pack(pady=(20, 10))
+        self.root.update()
+        
+        # Initialize xlwings app (Excel in background)
+        app = None
+        wb = None
+        
+        try:
+            # Open Excel invisibly
+            app = xw.App(visible=False, add_book=False)
             
-            ws = wb["Offer"]
+            # Open the template
+            wb = app.books.open(template_file)
             
-            # Get the Header 1 style from the template (if it exists)
-            header_style = None
-            if "Header 1" in wb._named_styles:
-                header_style = wb._named_styles["Header 1"]
+            # Find the offer sheet (case-insensitive)
+            sheet_name = None
+            for name in wb.sheet_names:
+                if name.lower() == "offer":
+                    sheet_name = name
+                    break
             
-            # Start from row 9
-            current_row = 9
+            if sheet_name is None:
+                raise Exception("Sheet 'offer' not found in the template!")
             
+            ws = wb.sheets[sheet_name]
+            
+            # Prepare data
             cameras = self.last_calculation_result["cameras"]
             nvr_config = self.last_calculation_result["nvr_config"]
             
@@ -924,40 +964,72 @@ class CCTVApp:
             excel_rows.append(("VMS", 1, "", "CCTV", "Software", "data"))
             
             # Write to Excel (overwrite only columns F, H, K, L, M)
-            # Column mapping: F=5, H=7, K=10, L=11, M=12 (1-indexed)
+            # Column mapping: F=6, H=8, K=11, L=12, M=13 (1-indexed)
+            current_row = 9
+            
+            # Clear existing data from row 9 downward (only columns we write to)
+            # Find last used row
+            last_row = ws.used_range.last_cell.row
+            if last_row >= current_row:
+                for row in range(current_row, last_row + 1):
+                    # Clear only the columns we write to
+                    ws.range(f"F{row}").value = None
+                    ws.range(f"H{row}").value = None
+                    ws.range(f"K{row}").value = None
+                    ws.range(f"L{row}").value = None
+                    ws.range(f"M{row}").value = None
+            
+            # Write new data
             for row_data in excel_rows:
                 part_no, qty, sys, solution, category, row_type = row_data
                 
-                # Write to columns F, H, K, L, M only
                 if part_no:
-                    ws.cell(row=current_row, column=6, value=part_no)  # Column F
+                    ws.range(f"F{current_row}").value = part_no
                 if qty:
-                    ws.cell(row=current_row, column=8, value=qty)      # Column H
+                    ws.range(f"H{current_row}").value = qty
                 if sys:
-                    ws.cell(row=current_row, column=11, value=sys)     # Column K
+                    ws.range(f"K{current_row}").value = sys
                 if solution:
-                    ws.cell(row=current_row, column=12, value=solution) # Column L
+                    ws.range(f"L{current_row}").value = solution
                 if category:
-                    ws.cell(row=current_row, column=13, value=category) # Column M
+                    ws.range(f"M{current_row}").value = category
                 
                 # Apply Header 1 style if this is a header row
-                if row_type == "header" and header_style:
-                    for col in [6, 8, 11, 12, 13]:  # Columns F, H, K, L, M
-                        cell = ws.cell(row=current_row, column=col)
-                        cell.style = "Header 1"
+                if row_type == "header":
+                    try:
+                        ws.range(f"F{current_row}:M{current_row}").api.Style = "Header 1"
+                    except Exception:
+                        # If Header 1 style doesn't exist, just continue
+                        pass
                 
                 current_row += 1
             
-            # Save the file (overwrite)
-            wb.save(template_file)
+            # Save the file
+            if save_option:
+                wb.save(output_file)
+            else:
+                wb.save()  # Overwrite original
+            
+            # Close the workbook
+            wb.close()
+            app.quit()
+            
+            # Close progress window
+            progress_msg.destroy()
             
             messagebox.showinfo("Success", 
-                f"Excel file has been updated successfully!\n\n"
-                f"File: {os.path.basename(template_file)}\n"
-                f"Sheet: Offer\n"
-                f"Rows added: {len(excel_rows)}")
+                f"Excel file has been exported successfully!\n\n"
+                f"File: {os.path.basename(output_file)}\n"
+                f"Sheet: {sheet_name}\n"
+                f"Rows exported: {len(excel_rows)}")
             
         except Exception as e:
+            progress_msg.destroy()
+            if app:
+                try:
+                    app.quit()
+                except:
+                    pass
             messagebox.showerror("Export Error", f"Failed to export to Excel:\n\n{str(e)}")
 
 # ─────────────────────────── Entry Point ───────────────────────────────────
