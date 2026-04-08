@@ -65,25 +65,94 @@ FONT_BTN  = ("Segoe UI", 9, "bold")
 FONT_LRGE = ("Segoe UI", 11, "bold")
 
 # Constants
-MAX_NVR_COMBOS = 5  # Maximum number of NVRs to consider in auto mode
+MAX_NVR_COMBOS = 6  # Maximum number of NVRs to consider in auto mode
 
 # ─────────────────────────── Core Logic ────────────────────────────────────
 def get_best_hdd(required_tb, slots, parity, price_dict):
-    """Find the most cost-effective HDD configuration"""
-    best_cost, best_cfg = float('inf'), None
-    for cap in sorted(price_dict.keys()):
-        price = price_dict[cap]
-        min_drives = parity + 1
-        data_req = math.ceil(required_tb / cap)
-        total_drives = data_req + parity
-        if total_drives > slots:
-            continue
-        total_drives = max(total_drives, min_drives)
-        cost = total_drives * price
-        if cost < best_cost:
-            best_cost = cost
-            best_cfg  = {"cap": cap, "qty": total_drives, "data": data_req, "cost": cost}
-    return best_cfg
+    """
+    Find the most cost-effective HDD configuration.
+    For JBOD (parity=0): Can mix different HDD sizes
+    For RAID (parity>0): All HDDs must be same size
+    """
+    if parity > 0:
+        # RAID mode - all drives must be same size
+        best_cost, best_cfg = float('inf'), None
+        for cap in sorted(price_dict.keys()):
+            price = price_dict[cap]
+            min_drives = parity + 1
+            data_req = math.ceil(required_tb / cap)
+            total_drives = data_req + parity
+            if total_drives > slots:
+                continue
+            total_drives = max(total_drives, min_drives)
+            cost = total_drives * price
+            if cost < best_cost:
+                best_cost = cost
+                best_cfg = {
+                    "cap": cap,
+                    "qty": total_drives,
+                    "data": data_req,
+                    "cost": cost,
+                    "mixed": False,
+                    "drives": [cap] * total_drives,
+                    "total_capacity": total_drives * cap
+                }
+        return best_cfg
+
+    else:
+        # JBOD mode - can mix different HDD sizes for optimal cost
+        # Get available HDD sizes sorted
+        available_sizes = sorted(price_dict.keys())
+
+        # Use dynamic programming to find optimal combination
+        # dp[t] = (min_cost, list_of_drives)
+        dp = {0: (0, [])}
+
+        for tb in range(1, math.ceil(required_tb) + max(available_sizes)):
+            best_cost = float('inf')
+            best_drives = None
+
+            for size in available_sizes:
+                remaining = max(0, tb - size)
+                if remaining in dp:
+                    cost, drives = dp[remaining]
+                    total_cost = cost + price_dict[size]
+                    new_drives = drives + [size]
+
+                    if len(new_drives) <= slots:
+                        if total_cost < best_cost:
+                            best_cost = total_cost
+                            best_drives = new_drives.copy()
+
+            if best_drives:
+                dp[tb] = (best_cost, best_drives)
+
+        # Find the best solution that meets or exceeds requirement
+        best_cost = float('inf')
+        best_drives = None
+
+        for tb in range(math.ceil(required_tb), math.ceil(required_tb) + max(available_sizes)):
+            if tb in dp:
+                cost, drives = dp[tb]
+                if len(drives) <= slots and cost < best_cost:
+                    best_cost = cost
+                    best_drives = drives
+
+        if best_drives:
+            # Sort drives for display
+            best_drives.sort(reverse=True)
+            total_capacity = sum(best_drives)
+            return {
+                "cap": best_drives[0],  # Primary cap for display
+                "qty": len(best_drives),
+                "data": len(best_drives),  # In JBOD, all drives are data
+                "cost": best_cost,
+                "mixed": len(set(best_drives)) > 1,
+                "drives": best_drives,
+                "total_capacity": total_capacity
+            }
+
+        return None
 
 # ─────────────────────────── Widget Helpers ────────────────────────────────
 def mk_frame(parent, bg=SURFACE, **kw):
@@ -199,7 +268,7 @@ class CCTVApp:
         hdr = mk_frame(self.root, bg=BG)
         hdr.pack(fill="x", padx=24, pady=(18, 0))
         mk_label(hdr, "CCTV Master Calculator", font=FONT_H1, fg=WHITE, bg=BG).pack(side="left")
-        mk_label(hdr, "  v34.1", font=FONT_BODY, fg=TEXT3, bg=BG).pack(side="left", pady=(6, 0))
+        mk_label(hdr, "  v34.2", font=FONT_BODY, fg=TEXT3, bg=BG).pack(side="left", pady=(6, 0))
         sep(self.root).pack(fill="x", padx=24, pady=10)
 
         self.nb = ttk.Notebook(self.root, style="TNotebook")
@@ -278,32 +347,32 @@ class CCTVApp:
             name = self.ents["Name"].get().strip()
             if not name:
                 raise ValueError("Camera name cannot be empty")
-            
+
             count = self.ents["Count"].get().strip()
             if not count:
                 raise ValueError("Count cannot be empty")
-            
+
             mbps = self.ents["Mbps/cam"].get().strip()
             if not mbps:
                 raise ValueError("Mbps/cam cannot be empty")
-            
+
             storage = self.ents["Storage TB/cam"].get().strip()
             if not storage:
                 raise ValueError("Storage TB/cam cannot be empty")
-            
+
             float(count); float(mbps); float(storage)
-            
+
             if float(count) <= 0:
                 raise ValueError("Count must be positive")
             if float(mbps) <= 0:
                 raise ValueError("Mbps/cam must be positive")
             if float(storage) <= 0:
                 raise ValueError("Storage TB/cam must be positive")
-                
+
         except ValueError as e:
             messagebox.showerror("Error", f"Invalid input: {e}")
             return
-            
+
         sel = self.tree.selection()
         if sel:
             self.tree.delete(sel[0])
@@ -413,25 +482,25 @@ class CCTVApp:
     def show_progress(self):
         if self.progress_window and self.progress_window.winfo_exists():
             return
-            
+
         self.progress_window = tk.Toplevel(self.root)
         self.progress_window.title("Calculating...")
         self.progress_window.configure(bg=SURFACE)
         self.progress_window.geometry("300x100")
         self.progress_window.transient(self.root)
         self.progress_window.grab_set()
-        
+
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 150
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 50
         self.progress_window.geometry(f"300x100+{x}+{y}")
-        
-        mk_label(self.progress_window, "Analyzing configurations...", 
+
+        mk_label(self.progress_window, "Analyzing configurations...",
                 font=FONT_H2, fg=ACCENT, bg=SURFACE).pack(pady=(20, 10))
-        
+
         self.progress_bar = ttk.Progressbar(self.progress_window, mode='indeterminate')
         self.progress_bar.pack(padx=20, pady=10, fill='x')
         self.progress_bar.start(10)
-        
+
         self.root.update()
 
     def hide_progress(self):
@@ -534,27 +603,27 @@ class CCTVApp:
             name = self.nf["Name"].get().strip()
             if not name:
                 raise ValueError("Name required")
-            
+
             sku = self.nf["SKU"].get().strip()
             if not sku:
                 raise ValueError("SKU required")
-            
+
             ch_str = self.nf["CH"].get().strip()
             if not ch_str:
                 raise ValueError("Channels required")
-            
+
             mb_str = self.nf["MB"].get().strip()
             if not mb_str:
                 raise ValueError("Max MB/s required")
-            
+
             slots_str = self.nf["Slots"].get().strip()
             if not slots_str:
                 raise ValueError("HDD Slots required")
-            
+
             price_str = self.nf["Price"].get().strip()
             if not price_str:
                 raise ValueError("Price required")
-            
+
             row = {
                 "Name":  name,
                 "SKU":   sku,
@@ -564,7 +633,7 @@ class CCTVApp:
                 "Price": float(price_str),
                 "mode":  self.na.get(),
             }
-            
+
             if row["CH"] <= 0:
                 raise ValueError("Channels must be positive")
             if row["MB"] <= 0:
@@ -573,7 +642,7 @@ class CCTVApp:
                 raise ValueError("HDD Slots must be positive")
             if row["Price"] <= 0:
                 raise ValueError("Price must be positive")
-                
+
             self.nvr_list.append(row)
             self.save_all_data()
             self.refresh_nvr_dropdowns()
@@ -648,70 +717,92 @@ class CCTVApp:
         n_units = len(hw_cfg)
         u_list = []
         cur_c = 0
-        
-        # Calculate total requirements
-        total_cameras = sum(int(c[1]) for c in cams)
-        total_storage = sum(int(c[1]) * float(c[3]) for c in cams)
-        
+
+        # Flatten cameras by individual units
+        flat_cams = []
+        for cam in cams:
+            cam_name = cam[0]
+            cam_count = int(cam[1])
+            cam_mbps = float(cam[2])
+            cam_tb = float(cam[3])
+            for _ in range(cam_count):
+                flat_cams.append((cam_name, 1, cam_mbps, cam_tb))
+
+        total_cameras = len(flat_cams)
+
         # For each NVR, calculate its share
         for i, hw in enumerate(hw_cfg):
             if split_ratio is None:
-                # Distribute cameras evenly by count
                 remaining_units = n_units - i
                 remaining_cameras = total_cameras - cur_c
                 take = math.ceil(remaining_cameras / remaining_units)
             else:
-                take = math.ceil(len(cams) * split_ratio[i])
-                take = min(take, len(cams) - cur_c)
-            
-            u_brk = cams[cur_c:cur_c + take]
+                take = math.ceil(len(flat_cams) * split_ratio[i])
+                take = min(take, len(flat_cams) - cur_c)
+
+            u_brk = flat_cams[cur_c:cur_c + take]
             cur_c += take
-            
+
             # Calculate totals for this NVR
-            u_mb = sum(int(c[1]) * float(c[2]) for c in u_brk)
-            u_tb = sum(int(c[1]) * float(c[3]) for c in u_brk)
-            u_c = sum(int(c[1]) for c in u_brk)
-            
+            u_mb = sum(c[2] for c in u_brk)
+            u_tb = sum(c[3] for c in u_brk)
+            u_c = len(u_brk)
+
             # Check channel capacity
             if u_c > hw["CH"]:
                 return None
-            
-            # Check bandwidth capacity
-            if u_mb > hw["MB"]:
+
+            # Check bandwidth capacity (convert MB to Mbps: 1 MB/s = 8 Mbps)
+            u_mb_per_sec = u_mb / 8
+            if u_mb_per_sec > hw["MB"]:
                 return None
-            
+
             # Get RAID mode
             raid = self.raid_var.get()
             parity = 0 if raid == "JBOD" else (1 if raid == "RAID 5" else 2)
             mode_str = raid
-            
-            # Get best HDD configuration
+
+            # Get best HDD configuration (now supports mixed sizes for JBOD)
             hd = get_best_hdd(u_tb, hw["Slots"], parity, self.hdd_prices)
             if hd is None:
                 return None
-            
-            cam_breakdown = {c[0]: int(c[1]) for c in u_brk}
+
+            # Count cameras by type for display
+            cam_breakdown = {}
+            for c in u_brk:
+                cam_breakdown[c[0]] = cam_breakdown.get(c[0], 0) + 1
+
+            # Format drive string for display
+            if hd.get("mixed", False):
+                drive_str = " + ".join([f"{d}TB" for d in hd["drives"]])
+                total_cap = hd.get("total_capacity", hd["qty"] * hd["cap"])
+            else:
+                drive_str = f"{hd['qty']} × {hd['cap']} TB"
+                total_cap = hd["qty"] * hd["cap"]
+
             u_list.append({
                 "name": hw["Name"],
                 "m": hw,
                 "mode": mode_str,
                 "mb": u_mb,
-                "load": u_mb / hw["MB"] * 100 if hw["MB"] > 0 else 0,
+                "load": (u_mb_per_sec / hw["MB"] * 100) if hw["MB"] > 0 else 0,
                 "c_total": u_c,
                 "cam_breakdown": cam_breakdown,
                 "qty": hd["qty"],
                 "cap": hd["cap"],
-                "total_tb": hd["qty"] * hd["cap"],
-                "usable_tb": hd["data"] * hd["cap"],
+                "total_tb": total_cap,
+                "usable_tb": hd.get("data", hd["qty"]) * hd["cap"] if not hd.get("mixed") else total_cap,
                 "cost": hw["Price"] + hd["cost"],
                 "h": hd,
-                "total_storage": u_tb
+                "total_storage": u_tb,
+                "drive_config": drive_str,
+                "is_mixed": hd.get("mixed", False)
             })
-        
+
         # Verify all cameras were assigned
-        if cur_c < len(cams):
+        if cur_c < total_cameras:
             return None
-        
+
         return u_list
 
     def run_logic(self):
@@ -720,7 +811,7 @@ class CCTVApp:
         if not cams:
             messagebox.showwarning("Warning", "Add cameras first.")
             return
-        
+
         # Validate camera data
         for cam in cams:
             try:
@@ -734,11 +825,11 @@ class CCTVApp:
             except (ValueError, IndexError) as e:
                 messagebox.showerror("Error", f"Invalid camera data: {cam[0] if cam else 'Unknown'}\n{e}")
                 return
-        
+
         self.calc_status.config(text="Calculating...", fg=GOLD)
         self.show_progress()
         self.root.update()
-        
+
         try:
             if self.auto_mode.get() == "AUTO":
                 # Filter NVRs by RAID compatibility
@@ -748,35 +839,30 @@ class CCTVApp:
                 )]
                 if not pool:
                     pool = list(self.nvr_list)
-                
+
                 # Sort pool by price for better optimization
                 pool.sort(key=lambda x: x["Price"])
-                
+
                 total_cams = sum(int(c[1]) for c in cams)
                 total_storage = sum(int(c[1]) * float(c[3]) for c in cams)
                 total_bandwidth = sum(int(c[1]) * float(c[2]) for c in cams)
-                
+
                 best_cfg, best_cost = None, float("inf")
-                
-                # Try different numbers of NVRs (1 to 4)
-                for n_u in range(1, 5):
+
+                # Try different numbers of NVRs (1 to 6)
+                for n_u in range(1, 9):
                     for combo in itertools.combinations_with_replacement(pool, n_u):
                         hw_c = list(combo)
-                        
+
                         # Quick feasibility checks
                         max_ch = sum(n["CH"] for n in hw_c)
                         if max_ch < total_cams:
                             continue
-                        
+
                         max_bandwidth = sum(n["MB"] for n in hw_c)
-                        if max_bandwidth < total_bandwidth:
+                        if max_bandwidth < (total_bandwidth / 8):  # Convert Mbps to MB/s
                             continue
-                        
-                        max_slots = sum(n["Slots"] for n in hw_c)
-                        max_hdd_storage = max_slots * max(self.hdd_prices.keys())
-                        if max_hdd_storage < total_storage:
-                            continue
-                        
+
                         # Calculate configuration
                         res = self.calculate_engine(cams, hw_c, None)
                         if res:
@@ -784,9 +870,9 @@ class CCTVApp:
                             if cost < best_cost:
                                 best_cost = cost
                                 best_cfg = res
-                
+
                 txt = best_cfg
-                
+
             else:
                 # Manual mode
                 active_hw = []
@@ -796,31 +882,31 @@ class CCTVApp:
                         nvr = next((n for n in self.nvr_list if n["Name"] == nvr_name), None)
                         if nvr:
                             active_hw.append(nvr)
-                
+
                 if not active_hw:
                     messagebox.showwarning("Warning", "Select at least one NVR.")
                     self.calc_status.config(text="", fg=TEXT2)
                     self.hide_progress()
                     return
-                
+
                 txt = self.calculate_engine(cams, active_hw, None)
-            
+
             if not txt:
                 self._show_result_error("ERROR: No valid configuration found.\n\nPossible reasons:\n• HDD sizes cannot meet storage requirements\n• NVR channel/slot limits exceeded\n• No compatible NVRs available for selected RAID mode")
                 self.calc_status.config(text="No solution found", fg=RED)
                 self.hide_progress()
                 return
-            
+
             self.last_calculation_result = {
                 "cameras": cams,
                 "nvr_config": txt,
                 "raid_mode": self.raid_var.get()
             }
-            
+
             self.generate_detailed_report(txt)
             total_cost = sum(x["cost"] for x in txt)
             self.calc_status.config(text=f"Done — Total: ${total_cost:,.2f}", fg=GREEN)
-            
+
         except Exception as e:
             self._show_result_error(f"ERROR: {str(e)}")
             self.calc_status.config(text="Error", fg=RED)
@@ -839,15 +925,15 @@ class CCTVApp:
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
         total = sum(u["cost"] for u in cfg)
         lines = []
-        
+
         def write(text, tag="value"):
             lines.append((text, tag))
-        
+
         write("=" * 72 + "\n", "divider")
         write(f" CCTV DESIGN REPORT  —  {now}\n", "header")
         write(f" SYSTEM TOTAL: ${total:,.2f}\n", "cost")
         write("=" * 72 + "\n", "divider")
-        
+
         for i, u in enumerate(cfg, 1):
             write(f"\nUNIT #{i}: {u['name']}\n", "best")
             write("-" * 50 + "\n", "divider")
@@ -863,58 +949,61 @@ class CCTVApp:
             else:
                 write("\n", "value")
             write(f"  Storage:  ", "label")
-            write(f"{u['qty']} × {u['cap']} TB  = {u['total_tb']} TB  ", "value")
-            write(f"(usable: {u['usable_tb']:.1f} TB)\n", "label")
+            write(f"{u['drive_config']}  = {u['total_tb']:.1f} TB  ", "value")
+            if u['is_mixed']:
+                write(f"(mixed capacities)\n", "label")
+            else:
+                write(f"(usable: {u['usable_tb']:.1f} TB)\n", "label")
             write(f"  Cost:     ", "label")
             write(f"NVR ${u['m']['Price']:,.2f}  +  HDD ${u['h']['cost']:,.2f}  =  ${u['cost']:,.2f}\n", "cost")
-        
+
         write("\n" + "=" * 72 + "\n", "divider")
         write(f" GRAND TOTAL:  ${total:,.2f}\n", "cost")
         write("=" * 72 + "\n", "divider")
-        
+
         self.res_txt.config(state="normal")
         self.res_txt.delete("1.0", "end")
         for text, tag in lines:
             self.res_txt.insert("end", text, tag)
         self.res_txt.config(state="disabled")
-        
+
         self.last_report = "".join(t for t, _ in lines)
         self.nb.select(self.tabs[1])
 
     # ── Excel Export Function with xlwings ─────────────────────────────────
     def export_to_excel(self):
         """Export calculation results to Excel template using xlwings (preserves all formatting)"""
-        
+
         # Check if we have calculation results
         if not self.last_calculation_result:
             messagebox.showwarning("Warning", "Run a calculation first before exporting!")
             return
-        
+
         # Check if xlwings is available
         if not EXCEL_AVAILABLE:
-            messagebox.showerror("Error", 
+            messagebox.showerror("Error",
                 "Excel export requires xlwings library.\n\n"
                 "Please install it using:\npip install xlwings")
             return
-        
+
         # Ask for template file location
         template_file = filedialog.askopenfilename(
             title="Select Excel Template",
             filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
             defaultextension=".xlsx"
         )
-        
+
         if not template_file:
             return
-        
+
         # Ask user if they want to save as a new file or overwrite
         save_option = messagebox.askyesno(
-            "Save Option", 
+            "Save Option",
             "Do you want to save as a new file?\n\n"
             "• Yes = Save as new file (preserves template)\n"
             "• No = Overwrite the template file"
         )
-        
+
         output_file = template_file
         if save_option:
             # Ask for new file location
@@ -926,7 +1015,7 @@ class CCTVApp:
             )
             if not output_file:
                 return
-        
+
         # Show progress
         progress_msg = tk.Toplevel(self.root)
         progress_msg.title("Exporting...")
@@ -934,42 +1023,42 @@ class CCTVApp:
         progress_msg.geometry("300x80")
         progress_msg.transient(self.root)
         progress_msg.grab_set()
-        
+
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 150
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 40
         progress_msg.geometry(f"300x80+{x}+{y}")
-        
-        mk_label(progress_msg, "Exporting to Excel...", 
+
+        mk_label(progress_msg, "Exporting to Excel...",
                 font=FONT_H2, fg=ACCENT, bg=SURFACE).pack(pady=(20, 10))
         self.root.update()
-        
+
         # Initialize xlwings app (Excel in background)
         app = None
         wb = None
-        
+
         try:
             # Open Excel invisibly
             app = xw.App(visible=False, add_book=False)
-            
+
             # Open the template
             wb = app.books.open(template_file)
-            
+
             # Find the offer sheet (case-insensitive)
             sheet_name = None
             for name in wb.sheet_names:
                 if name.lower() == "offer":
                     sheet_name = name
                     break
-            
+
             if sheet_name is None:
                 raise Exception("Sheet 'offer' not found in the template!")
-            
+
             ws = wb.sheets[sheet_name]
-            
+
             # Prepare data
             cameras = self.last_calculation_result["cameras"]
             nvr_config = self.last_calculation_result["nvr_config"]
-            
+
             # Group NVRs by SKU and HDD config
             nvr_groups = {}
             for unit in nvr_config:
@@ -988,26 +1077,26 @@ class CCTVApp:
                     }
                 else:
                     nvr_groups[key]["count"] += 1
-            
+
             # Prepare data rows
             excel_rows = []
-            
+
             # Add Camera Header
             excel_rows.append(("", "", "", "", "", "header", "Cameras"))
-            
+
             # Add each camera type and its CAMLIC
             for cam in cameras:
                 cam_name = cam[0]
                 cam_qty = int(cam[1])
-                
+
                 # Camera row
                 excel_rows.append((cam_name, cam_qty, "", "CCTV", "Camera", "data", ""))
                 # CAMLIC row (immediately after each camera)
                 excel_rows.append(("CAMLIC", 1, "ch", "CCTV", "Software", "data", ""))
-            
+
             # Add NVRs Header
             excel_rows.append(("", "", "", "", "", "header", "NVRs"))
-            
+
             # Add NVR groups and their HDDs
             for key, group in nvr_groups.items():
                 # NVR row
@@ -1015,16 +1104,16 @@ class CCTVApp:
                 # HDD row for this NVR
                 hdd_part_no = f"{group['hdd_cap']}TB HDD"
                 excel_rows.append((hdd_part_no, group["hdd_qty"], "ch", "CCTV", "HDD", "data", ""))
-            
+
             # Add VMS Header
             excel_rows.append(("", "", "", "", "", "header", "VMS"))
-            
+
             # Add VMS row (Sys is blank, not "ch")
             excel_rows.append(("VMS", 1, "", "CCTV", "Software", "data", ""))
-            
+
             # Write to Excel
             current_row = 9
-            
+
             # Clear existing data from row 9 downward
             last_row = ws.used_range.last_cell.row
             if last_row >= current_row:
@@ -1035,26 +1124,27 @@ class CCTVApp:
                     ws.range(f"K{row}").value = None
                     ws.range(f"L{row}").value = None
                     ws.range(f"M{row}").value = None
-            
+
             # Write new data
             for row_data in excel_rows:
                 part_no, qty, sys, solution, category, row_type, header_text = row_data
-                
+
                 if row_type == "header":
                     # Clear the row first
                     ws.range(f"F{current_row}:M{current_row}").value = None
                     # Put header text in column G
                     if header_text:
                         ws.range(f"G{current_row}").value = header_text
-                    # Apply Header 1 style
+                    # Apply CG - Header 1 style
                     try:
-                        ws.range(f"F{current_row}:M{current_row}").api.Style = "Header 1"
+                        ws.range(f"F{current_row}:M{current_row}").api.Style = "CG - Header 1"
                     except Exception:
                         try:
-                            ws.range(f"G{current_row}").api.Style = "Header 1"
-                        except:
-                            pass
+                            ws.range(f"G{current_row}").api.Style = "CG - Header 1"
+                        except Exception as e:
+                            print(f"Warning: Could not apply 'CG - Header 1' style: {e}")
                 else:
+                    # Data rows - write normally
                     if part_no:
                         ws.range(f"F{current_row}").value = part_no
                     if qty:
@@ -1065,26 +1155,26 @@ class CCTVApp:
                         ws.range(f"L{current_row}").value = solution
                     if category:
                         ws.range(f"M{current_row}").value = category
-                
+
                 current_row += 1
-            
+
             # Save the file
             if save_option:
                 wb.save(output_file)
             else:
                 wb.save()
-            
+
             wb.close()
             app.quit()
-            
+
             progress_msg.destroy()
-            
-            messagebox.showinfo("Success", 
+
+            messagebox.showinfo("Success",
                 f"Excel file has been exported successfully!\n\n"
                 f"File: {os.path.basename(output_file)}\n"
                 f"Sheet: {sheet_name}\n"
                 f"Rows exported: {len(excel_rows)}")
-            
+
         except Exception as e:
             progress_msg.destroy()
             if app:
