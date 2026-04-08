@@ -133,7 +133,7 @@ class CCTVApp:
         self.root.minsize(1000, 700)
 
         self.last_report = None
-        self.last_calculation_result = None  # Store calculation result for Excel export
+        self.last_calculation_result = None
         self.hdd_ents    = {}
         self.nvr_price_entries = []
         self.progress_window = None
@@ -199,7 +199,7 @@ class CCTVApp:
         hdr = mk_frame(self.root, bg=BG)
         hdr.pack(fill="x", padx=24, pady=(18, 0))
         mk_label(hdr, "CCTV Master Calculator", font=FONT_H1, fg=WHITE, bg=BG).pack(side="left")
-        mk_label(hdr, "  v34.0", font=FONT_BODY, fg=TEXT3, bg=BG).pack(side="left", pady=(6, 0))
+        mk_label(hdr, "  v34.1", font=FONT_BODY, fg=TEXT3, bg=BG).pack(side="left", pady=(6, 0))
         sep(self.root).pack(fill="x", padx=24, pady=10)
 
         self.nb = ttk.Notebook(self.root, style="TNotebook")
@@ -340,7 +340,7 @@ class CCTVApp:
             rb.grid(row=0, column=(1 if val=="AUTO" else 2), padx=(0, 16))
 
         mk_label(row, "RAID Level:", bg=SURFACE, fg=TEXT2).grid(row=0, column=3, sticky="w", padx=(16, 6))
-        self.raid_var = tk.StringVar(value="RAID 5")
+        self.raid_var = tk.StringVar(value="JBOD")
         cb_raid = ttk.Combobox(row, textvariable=self.raid_var, width=10,
                                state="readonly", values=["JBOD", "RAID 5", "RAID 6"])
         cb_raid.grid(row=0, column=4, padx=(0, 16))
@@ -638,264 +638,197 @@ class CCTVApp:
         self.save_all_data()
         messagebox.showinfo("Saved", "HDD Prices Updated.")
 
-    # ── Fixed Calculation engine ────────────────────────────────────────────────
-def calculate_engine(self, cams, hw_cfg, split_ratio=None):
-    """
-    cams: list of camera row values [name, count, mbps, tb]
-    hw_cfg: list of NVR dicts (one per unit, can repeat)
-    split_ratio: how to distribute cameras across units (None for even distribution)
-    """
-    n_units = len(hw_cfg)
-    u_list = []
-    cur_c = 0
-    
-    # Calculate total requirements
-    total_cameras = sum(int(c[1]) for c in cams)
-    total_bandwidth = sum(int(c[1]) * float(c[2]) for c in cams)
-    total_storage = sum(int(c[1]) * float(c[3]) for c in cams)
-    
-    # For each NVR, calculate its share
-    for i, hw in enumerate(hw_cfg):
-        if split_ratio is None:
-            # Distribute cameras proportionally by storage or count?
-            # Better: distribute by storage requirement to balance HDD usage
-            remaining_units = n_units - i
-            remaining_cameras = total_cameras - cur_c
-            remaining_storage = total_storage - sum(u.get("total_storage", 0) for u in u_list)
-            
-            # Calculate target storage for this NVR based on its slot capacity
-            # This ensures we don't exceed HDD limits
-            max_storage_per_unit = hw["Slots"] * max(self.hdd_prices.keys())
-            target_storage = min(remaining_storage / remaining_units, max_storage_per_unit)
-            
-            # Find cameras that fit within target storage
-            take = 0
-            accumulated_storage = 0
-            for j in range(cur_c, len(cams)):
-                cam_storage = int(cams[j][1]) * float(cams[j][3])
-                if accumulated_storage + cam_storage <= target_storage * 1.1:  # 10% tolerance
-                    accumulated_storage += cam_storage
-                    take += 1
-                else:
-                    break
-            
-            # Ensure we take at least 1 camera if available
-            if take == 0 and cur_c < len(cams):
-                take = 1
-        else:
-            take = math.ceil(len(cams) * split_ratio[i])
-            take = min(take, len(cams) - cur_c)
+    # ── Calculation engine ────────────────────────────────────────────────
+    def calculate_engine(self, cams, hw_cfg, split_ratio=None):
+        """
+        cams: list of camera row values [name, count, mbps, tb]
+        hw_cfg: list of NVR dicts (one per unit, can repeat)
+        split_ratio: how to distribute cameras across units (None for even distribution)
+        """
+        n_units = len(hw_cfg)
+        u_list = []
+        cur_c = 0
         
-        u_brk = cams[cur_c:cur_c + take]
-        cur_c += take
+        # Calculate total requirements
+        total_cameras = sum(int(c[1]) for c in cams)
+        total_storage = sum(int(c[1]) * float(c[3]) for c in cams)
         
-        # Calculate totals for this NVR
-        u_mb = sum(int(c[1]) * float(c[2]) for c in u_brk)
-        u_tb = sum(int(c[1]) * float(c[3]) for c in u_brk)
-        u_c = sum(int(c[1]) for c in u_brk)
+        # For each NVR, calculate its share
+        for i, hw in enumerate(hw_cfg):
+            if split_ratio is None:
+                # Distribute cameras evenly by count
+                remaining_units = n_units - i
+                remaining_cameras = total_cameras - cur_c
+                take = math.ceil(remaining_cameras / remaining_units)
+            else:
+                take = math.ceil(len(cams) * split_ratio[i])
+                take = min(take, len(cams) - cur_c)
+            
+            u_brk = cams[cur_c:cur_c + take]
+            cur_c += take
+            
+            # Calculate totals for this NVR
+            u_mb = sum(int(c[1]) * float(c[2]) for c in u_brk)
+            u_tb = sum(int(c[1]) * float(c[3]) for c in u_brk)
+            u_c = sum(int(c[1]) for c in u_brk)
+            
+            # Check channel capacity
+            if u_c > hw["CH"]:
+                return None
+            
+            # Check bandwidth capacity
+            if u_mb > hw["MB"]:
+                return None
+            
+            # Get RAID mode
+            raid = self.raid_var.get()
+            parity = 0 if raid == "JBOD" else (1 if raid == "RAID 5" else 2)
+            mode_str = raid
+            
+            # Get best HDD configuration
+            hd = get_best_hdd(u_tb, hw["Slots"], parity, self.hdd_prices)
+            if hd is None:
+                return None
+            
+            cam_breakdown = {c[0]: int(c[1]) for c in u_brk}
+            u_list.append({
+                "name": hw["Name"],
+                "m": hw,
+                "mode": mode_str,
+                "mb": u_mb,
+                "load": u_mb / hw["MB"] * 100 if hw["MB"] > 0 else 0,
+                "c_total": u_c,
+                "cam_breakdown": cam_breakdown,
+                "qty": hd["qty"],
+                "cap": hd["cap"],
+                "total_tb": hd["qty"] * hd["cap"],
+                "usable_tb": hd["data"] * hd["cap"],
+                "cost": hw["Price"] + hd["cost"],
+                "h": hd,
+                "total_storage": u_tb
+            })
         
-        # Check channel capacity
-        if u_c > hw["CH"]:
+        # Verify all cameras were assigned
+        if cur_c < len(cams):
             return None
         
-        # Check bandwidth capacity
-        if u_mb > hw["MB"]:
-            return None
-        
-        # Get RAID mode
-        raid = self.raid_var.get()
-        parity = 0 if raid == "JBOD" else (1 if raid == "RAID 5" else 2)
-        mode_str = raid
-        
-        # Get best HDD configuration
-        hd = get_best_hdd(u_tb, hw["Slots"], parity, self.hdd_prices)
-        if hd is None:
-            return None
-        
-        cam_breakdown = {c[0]: int(c[1]) for c in u_brk}
-        u_list.append({
-            "name": hw["Name"],
-            "m": hw,
-            "mode": mode_str,
-            "mb": u_mb,
-            "load": u_mb / hw["MB"] * 100 if hw["MB"] > 0 else 0,
-            "c_total": u_c,
-            "cam_breakdown": cam_breakdown,
-            "qty": hd["qty"],
-            "cap": hd["cap"],
-            "total_tb": hd["qty"] * hd["cap"],
-            "usable_tb": hd["data"] * hd["cap"],
-            "cost": hw["Price"] + hd["cost"],
-            "h": hd,
-            "total_storage": u_tb
-        })
-    
-    # Verify all cameras were assigned
-    if cur_c < len(cams):
-        return None
-    
-    return u_list
+        return u_list
 
-def run_logic(self):
-    """Fixed auto-mode that properly evaluates multi-NVR configurations"""
-    cams = [self.tree.item(i)["values"] for i in self.tree.get_children()]
-    if not cams:
-        messagebox.showwarning("Warning", "Add cameras first.")
-        return
-    
-    # Validate camera data
-    for cam in cams:
-        try:
-            if not cam[0].strip():
-                raise ValueError("Camera name cannot be empty")
-            count = int(cam[1])
-            mbps = float(cam[2])
-            storage = float(cam[3])
-            if count <= 0 or mbps <= 0 or storage <= 0:
-                raise ValueError("All camera values must be positive")
-        except (ValueError, IndexError) as e:
-            messagebox.showerror("Error", f"Invalid camera data: {cam[0] if cam else 'Unknown'}\n{e}")
+    def run_logic(self):
+        """Auto-mode that properly evaluates multi-NVR configurations"""
+        cams = [self.tree.item(i)["values"] for i in self.tree.get_children()]
+        if not cams:
+            messagebox.showwarning("Warning", "Add cameras first.")
             return
-    
-    self.calc_status.config(text="Calculating...", fg=GOLD)
-    self.show_progress()
-    self.root.update()
-    
-    try:
-        if self.auto_mode.get() == "AUTO":
-            # Filter NVRs by RAID compatibility
-            pool = [n for n in self.nvr_list if (
-                n.get("mode", "RAID") == "JBOD" and self.raid_var.get() == "JBOD" or
-                n.get("mode", "RAID") == "RAID" and self.raid_var.get() != "JBOD"
-            )]
-            if not pool:
-                pool = list(self.nvr_list)
-            
-            # Sort pool by price per channel or price per slot for better optimization
-            # This helps find cheaper combinations first
-            pool.sort(key=lambda x: x["Price"] / x["CH"] if x["CH"] > 0 else float('inf'))
-            
-            total_cams = sum(int(c[1]) for c in cams)
-            total_storage = sum(int(c[1]) * float(c[3]) for c in cams)
-            total_bandwidth = sum(int(c[1]) * float(c[2]) for c in cams)
-            
-            best_cfg, best_cost = None, float("inf")
-            best_nvr_count = None
-            
-            # Try different numbers of NVRs
-            max_nvrs = min(MAX_NVR_COMBOS, len(pool) * 2)  # Allow up to 2x pool size for duplicates
-            
-            for n_u in range(1, max_nvrs + 1):
-                # For each NVR count, try combinations
-                for combo in itertools.combinations_with_replacement(pool, n_u):
-                    hw_c = list(combo)
-                    
-                    # Quick feasibility checks before full calculation
-                    max_ch = sum(n["CH"] for n in hw_c)
-                    if max_ch < total_cams:
-                        continue
-                    
-                    max_bandwidth = sum(n["MB"] for n in hw_c)
-                    if max_bandwidth < total_bandwidth:
-                        continue
-                    
-                    max_slots = sum(n["Slots"] for n in hw_c)
-                    max_hdd_storage = max_slots * max(self.hdd_prices.keys())
-                    if max_hdd_storage < total_storage:
-                        continue
-                    
-                    # Try different camera distribution strategies
-                    # Strategy 1: Even distribution by count
-                    res1 = self.calculate_engine(cams, hw_c, None)
-                    if res1:
-                        cost1 = sum(x["cost"] for x in res1)
-                        if cost1 < best_cost:
-                            best_cost = cost1
-                            best_cfg = res1
-                            best_nvr_count = n_u
-                    
-                    # Strategy 2: Try to balance by storage (for better HDD utilization)
-                    if n_u > 1:
-                        # Calculate storage per camera
-                        cam_storages = [int(c[1]) * float(c[3]) for c in cams]
-                        total_storage = sum(cam_storages)
-                        target_per_nvr = total_storage / n_u
+        
+        # Validate camera data
+        for cam in cams:
+            try:
+                if not cam[0].strip():
+                    raise ValueError("Camera name cannot be empty")
+                count = int(cam[1])
+                mbps = float(cam[2])
+                storage = float(cam[3])
+                if count <= 0 or mbps <= 0 or storage <= 0:
+                    raise ValueError("All camera values must be positive")
+            except (ValueError, IndexError) as e:
+                messagebox.showerror("Error", f"Invalid camera data: {cam[0] if cam else 'Unknown'}\n{e}")
+                return
+        
+        self.calc_status.config(text="Calculating...", fg=GOLD)
+        self.show_progress()
+        self.root.update()
+        
+        try:
+            if self.auto_mode.get() == "AUTO":
+                # Filter NVRs by RAID compatibility
+                pool = [n for n in self.nvr_list if (
+                    n.get("mode", "RAID") == "JBOD" and self.raid_var.get() == "JBOD" or
+                    n.get("mode", "RAID") == "RAID" and self.raid_var.get() != "JBOD"
+                )]
+                if not pool:
+                    pool = list(self.nvr_list)
+                
+                # Sort pool by price for better optimization
+                pool.sort(key=lambda x: x["Price"])
+                
+                total_cams = sum(int(c[1]) for c in cams)
+                total_storage = sum(int(c[1]) * float(c[3]) for c in cams)
+                total_bandwidth = sum(int(c[1]) * float(c[2]) for c in cams)
+                
+                best_cfg, best_cost = None, float("inf")
+                
+                # Try different numbers of NVRs (1 to 4)
+                for n_u in range(1, 5):
+                    for combo in itertools.combinations_with_replacement(pool, n_u):
+                        hw_c = list(combo)
                         
-                        # Create distribution ratios based on storage
-                        ratios = []
-                        accumulated = 0
-                        for i in range(n_u - 1):
-                            target = target_per_nvr * (i + 1)
-                            # Find camera index that gets us close to target
-                            cumsum = 0
-                            for j, s in enumerate(cam_storages):
-                                cumsum += s
-                                if cumsum >= target:
-                                    ratios.append((j + 1) / len(cams))
-                                    break
-                        ratios.append(1.0)  # Last one takes all remaining
+                        # Quick feasibility checks
+                        max_ch = sum(n["CH"] for n in hw_c)
+                        if max_ch < total_cams:
+                            continue
                         
-                        # Convert ratios to differences
-                        diff_ratios = [ratios[0]] + [ratios[i] - ratios[i-1] for i in range(1, len(ratios))]
+                        max_bandwidth = sum(n["MB"] for n in hw_c)
+                        if max_bandwidth < total_bandwidth:
+                            continue
                         
-                        res2 = self.calculate_engine(cams, hw_c, diff_ratios)
-                        if res2:
-                            cost2 = sum(x["cost"] for x in res2)
-                            if cost2 < best_cost:
-                                best_cost = cost2
-                                best_cfg = res2
-                                best_nvr_count = n_u
+                        max_slots = sum(n["Slots"] for n in hw_c)
+                        max_hdd_storage = max_slots * max(self.hdd_prices.keys())
+                        if max_hdd_storage < total_storage:
+                            continue
+                        
+                        # Calculate configuration
+                        res = self.calculate_engine(cams, hw_c, None)
+                        if res:
+                            cost = sum(x["cost"] for x in res)
+                            if cost < best_cost:
+                                best_cost = cost
+                                best_cfg = res
+                
+                txt = best_cfg
+                
+            else:
+                # Manual mode
+                active_hw = []
+                for combo in self.manual_combos:
+                    nvr_name = combo.get()
+                    if nvr_name != "None":
+                        nvr = next((n for n in self.nvr_list if n["Name"] == nvr_name), None)
+                        if nvr:
+                            active_hw.append(nvr)
+                
+                if not active_hw:
+                    messagebox.showwarning("Warning", "Select at least one NVR.")
+                    self.calc_status.config(text="", fg=TEXT2)
+                    self.hide_progress()
+                    return
+                
+                txt = self.calculate_engine(cams, active_hw, None)
             
-            txt = best_cfg
-            
-            # Debug output (remove in production)
-            if txt:
-                print(f"Selected configuration with {best_nvr_count} NVR(s)")
-                for i, unit in enumerate(txt):
-                    print(f"  Unit {i+1}: {unit['name']} - ${unit['cost']:,.2f}")
-                print(f"  Total: ${best_cost:,.2f}")
-            
-        else:
-            # Manual mode - unchanged
-            active_hw = []
-            for combo in self.manual_combos:
-                nvr_name = combo.get()
-                if nvr_name != "None":
-                    nvr = next((n for n in self.nvr_list if n["Name"] == nvr_name), None)
-                    if nvr:
-                        active_hw.append(nvr)
-            
-            if not active_hw:
-                messagebox.showwarning("Warning", "Select at least one NVR.")
-                self.calc_status.config(text="", fg=TEXT2)
+            if not txt:
+                self._show_result_error("ERROR: No valid configuration found.\n\nPossible reasons:\n• HDD sizes cannot meet storage requirements\n• NVR channel/slot limits exceeded\n• No compatible NVRs available for selected RAID mode")
+                self.calc_status.config(text="No solution found", fg=RED)
                 self.hide_progress()
                 return
             
-            txt = self.calculate_engine(cams, active_hw, None)
-        
-        if not txt:
-            self._show_result_error("ERROR: No valid configuration found.\n\nPossible reasons:\n• HDD sizes cannot meet storage requirements\n• NVR channel/slot limits exceeded\n• No compatible NVRs available for selected RAID mode")
-            self.calc_status.config(text="No solution found", fg=RED)
+            self.last_calculation_result = {
+                "cameras": cams,
+                "nvr_config": txt,
+                "raid_mode": self.raid_var.get()
+            }
+            
+            self.generate_detailed_report(txt)
+            total_cost = sum(x["cost"] for x in txt)
+            self.calc_status.config(text=f"Done — Total: ${total_cost:,.2f}", fg=GREEN)
+            
+        except Exception as e:
+            self._show_result_error(f"ERROR: {str(e)}")
+            self.calc_status.config(text="Error", fg=RED)
+            import traceback
+            traceback.print_exc()
+        finally:
             self.hide_progress()
-            return
-        
-        self.last_calculation_result = {
-            "cameras": cams,
-            "nvr_config": txt,
-            "raid_mode": self.raid_var.get()
-        }
-        
-        self.generate_detailed_report(txt)
-        total_cost = sum(x["cost"] for x in txt)
-        self.calc_status.config(text=f"Done — Total: ${total_cost:,.2f}", fg=GREEN)
-        
-    except Exception as e:
-        self._show_result_error(f"ERROR: {str(e)}")
-        self.calc_status.config(text="Error", fg=RED)
-        import traceback
-        traceback.print_exc()  # Print full error for debugging
-    finally:
-        self.hide_progress()
+
     def _show_result_error(self, msg):
         self.res_txt.config(state="normal")
         self.res_txt.delete("1.0", "end")
@@ -949,226 +882,218 @@ def run_logic(self):
         self.nb.select(self.tabs[1])
 
     # ── Excel Export Function with xlwings ─────────────────────────────────
-def export_to_excel(self):
-    """Export calculation results to Excel template using xlwings (preserves all formatting)"""
-    
-    # Check if we have calculation results
-    if not self.last_calculation_result:
-        messagebox.showwarning("Warning", "Run a calculation first before exporting!")
-        return
-    
-    # Check if xlwings is available
-    if not EXCEL_AVAILABLE:
-        messagebox.showerror("Error", 
-            "Excel export requires xlwings library.\n\n"
-            "Please install it using:\npip install xlwings")
-        return
-    
-    # Ask for template file location
-    template_file = filedialog.askopenfilename(
-        title="Select Excel Template",
-        filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
-        defaultextension=".xlsx"
-    )
-    
-    if not template_file:
-        return
-    
-    # Ask user if they want to save as a new file or overwrite
-    save_option = messagebox.askyesno(
-        "Save Option", 
-        "Do you want to save as a new file?\n\n"
-        "• Yes = Save as new file (preserves template)\n"
-        "• No = Overwrite the template file"
-    )
-    
-    output_file = template_file
-    if save_option:
-        # Ask for new file location
-        output_file = filedialog.asksaveasfilename(
-            title="Save Excel File As",
-            defaultextension=".xlsx",
-            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
-            initialfile=f"CCTV_Quote_{datetime.now().strftime('%Y%m%d_%H%M')}"
-        )
-        if not output_file:
+    def export_to_excel(self):
+        """Export calculation results to Excel template using xlwings (preserves all formatting)"""
+        
+        # Check if we have calculation results
+        if not self.last_calculation_result:
+            messagebox.showwarning("Warning", "Run a calculation first before exporting!")
             return
-    
-    # Show progress
-    progress_msg = tk.Toplevel(self.root)
-    progress_msg.title("Exporting...")
-    progress_msg.configure(bg=SURFACE)
-    progress_msg.geometry("300x80")
-    progress_msg.transient(self.root)
-    progress_msg.grab_set()
-    
-    x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 150
-    y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 40
-    progress_msg.geometry(f"300x80+{x}+{y}")
-    
-    mk_label(progress_msg, "Exporting to Excel...", 
-            font=FONT_H2, fg=ACCENT, bg=SURFACE).pack(pady=(20, 10))
-    self.root.update()
-    
-    # Initialize xlwings app (Excel in background)
-    app = None
-    wb = None
-    
-    try:
-        # Open Excel invisibly
-        app = xw.App(visible=False, add_book=False)
         
-        # Open the template
-        wb = app.books.open(template_file)
+        # Check if xlwings is available
+        if not EXCEL_AVAILABLE:
+            messagebox.showerror("Error", 
+                "Excel export requires xlwings library.\n\n"
+                "Please install it using:\npip install xlwings")
+            return
         
-        # Find the offer sheet (case-insensitive)
-        sheet_name = None
-        for name in wb.sheet_names:
-            if name.lower() == "offer":
-                sheet_name = name
-                break
+        # Ask for template file location
+        template_file = filedialog.askopenfilename(
+            title="Select Excel Template",
+            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
+            defaultextension=".xlsx"
+        )
         
-        if sheet_name is None:
-            raise Exception("Sheet 'offer' not found in the template!")
+        if not template_file:
+            return
         
-        ws = wb.sheets[sheet_name]
+        # Ask user if they want to save as a new file or overwrite
+        save_option = messagebox.askyesno(
+            "Save Option", 
+            "Do you want to save as a new file?\n\n"
+            "• Yes = Save as new file (preserves template)\n"
+            "• No = Overwrite the template file"
+        )
         
-        # Prepare data
-        cameras = self.last_calculation_result["cameras"]
-        nvr_config = self.last_calculation_result["nvr_config"]
-        
-        # Group NVRs by SKU and HDD config
-        nvr_groups = {}
-        for unit in nvr_config:
-            sku = unit["m"]["SKU"]
-            hdd_cap = unit["cap"]
-            hdd_qty = unit["qty"]
-            key = (sku, hdd_cap, hdd_qty)
-            if key not in nvr_groups:
-                nvr_groups[key] = {
-                    "sku": sku,
-                    "nvr_name": unit["name"],
-                    "hdd_cap": hdd_cap,
-                    "hdd_qty": hdd_qty,
-                    "count": 1,
-                    "price": unit["m"]["Price"]
-                }
-            else:
-                nvr_groups[key]["count"] += 1
-        
-        # Prepare data rows
-        # Each row is: (part_no, qty, sys, solution, category, row_type, header_text)
-        # header_text is only used for header rows
-        excel_rows = []
-        
-        # Add Camera Header
-        excel_rows.append(("", "", "", "", "", "header", "Cameras"))
-        
-        # Add each camera type and its CAMLIC
-        for cam in cameras:
-            cam_name = cam[0]
-            cam_qty = int(cam[1])
-            
-            # Camera row
-            excel_rows.append((cam_name, cam_qty, "", "CCTV", "Camera", "data", ""))
-            # CAMLIC row (immediately after each camera)
-            excel_rows.append(("CAMLIC", 1, "ch", "CCTV", "Software", "data", ""))
-        
-        # Add NVRs Header
-        excel_rows.append(("", "", "", "", "", "header", "NVRs"))
-        
-        # Add NVR groups and their HDDs
-        for key, group in nvr_groups.items():
-            # NVR row
-            excel_rows.append((group["sku"], group["count"], "", "CCTV", "NVR", "data", ""))
-            # HDD row for this NVR
-            hdd_part_no = f"{group['hdd_cap']}TB HDD"
-            excel_rows.append((hdd_part_no, group["hdd_qty"], "ch", "CCTV", "HDD", "data", ""))
-        
-        # Add VMS Header
-        excel_rows.append(("", "", "", "", "", "header", "VMS"))
-        
-        # Add VMS row (Sys is blank, not "ch")
-        excel_rows.append(("VMS", 1, "", "CCTV", "Software", "data", ""))
-        
-        # Write to Excel
-        # Column mapping: F=6, G=7, H=8, K=11, L=12, M=13 (1-indexed)
-        current_row = 9
-        
-        # Clear existing data from row 9 downward (only columns we write to)
-        # Find last used row
-        last_row = ws.used_range.last_cell.row
-        if last_row >= current_row:
-            for row in range(current_row, last_row + 1):
-                # Clear only the columns we write to (F, G, H, K, L, M)
-                ws.range(f"F{row}").value = None
-                ws.range(f"G{row}").value = None
-                ws.range(f"H{row}").value = None
-                ws.range(f"K{row}").value = None
-                ws.range(f"L{row}").value = None
-                ws.range(f"M{row}").value = None
-        
-        # Write new data
-        for row_data in excel_rows:
-            part_no, qty, sys, solution, category, row_type, header_text = row_data
-            
-            if row_type == "header":
-                # For header rows: clear the row first (F through M)
-                ws.range(f"F{current_row}:M{current_row}").value = None
-                # Put header text in column G
-                if header_text:
-                    ws.range(f"G{current_row}").value = header_text
-                # Apply Header 1 style to the entire range F through M
-                try:
-                    ws.range(f"F{current_row}:M{current_row}").api.Style = "Header 1"
-                except Exception:
-                    # If Header 1 style doesn't exist, try alternative
-                    try:
-                        ws.range(f"G{current_row}").api.Style = "Header 1"
-                    except:
-                        pass
-            else:
-                # Data rows - write normally
-                if part_no:
-                    ws.range(f"F{current_row}").value = part_no
-                if qty:
-                    ws.range(f"H{current_row}").value = qty
-                if sys:
-                    ws.range(f"K{current_row}").value = sys
-                if solution:
-                    ws.range(f"L{current_row}").value = solution
-                if category:
-                    ws.range(f"M{current_row}").value = category
-            
-            current_row += 1
-        
-        # Save the file
+        output_file = template_file
         if save_option:
-            wb.save(output_file)
-        else:
-            wb.save()  # Overwrite original
+            # Ask for new file location
+            output_file = filedialog.asksaveasfilename(
+                title="Save Excel File As",
+                defaultextension=".xlsx",
+                filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
+                initialfile=f"CCTV_Quote_{datetime.now().strftime('%Y%m%d_%H%M')}"
+            )
+            if not output_file:
+                return
         
-        # Close the workbook
-        wb.close()
-        app.quit()
+        # Show progress
+        progress_msg = tk.Toplevel(self.root)
+        progress_msg.title("Exporting...")
+        progress_msg.configure(bg=SURFACE)
+        progress_msg.geometry("300x80")
+        progress_msg.transient(self.root)
+        progress_msg.grab_set()
         
-        # Close progress window
-        progress_msg.destroy()
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 150
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 40
+        progress_msg.geometry(f"300x80+{x}+{y}")
         
-        messagebox.showinfo("Success", 
-            f"Excel file has been exported successfully!\n\n"
-            f"File: {os.path.basename(output_file)}\n"
-            f"Sheet: {sheet_name}\n"
-            f"Rows exported: {len(excel_rows)}")
+        mk_label(progress_msg, "Exporting to Excel...", 
+                font=FONT_H2, fg=ACCENT, bg=SURFACE).pack(pady=(20, 10))
+        self.root.update()
         
-    except Exception as e:
-        progress_msg.destroy()
-        if app:
-            try:
-                app.quit()
-            except:
-                pass
-        messagebox.showerror("Export Error", f"Failed to export to Excel:\n\n{str(e)}")
+        # Initialize xlwings app (Excel in background)
+        app = None
+        wb = None
+        
+        try:
+            # Open Excel invisibly
+            app = xw.App(visible=False, add_book=False)
+            
+            # Open the template
+            wb = app.books.open(template_file)
+            
+            # Find the offer sheet (case-insensitive)
+            sheet_name = None
+            for name in wb.sheet_names:
+                if name.lower() == "offer":
+                    sheet_name = name
+                    break
+            
+            if sheet_name is None:
+                raise Exception("Sheet 'offer' not found in the template!")
+            
+            ws = wb.sheets[sheet_name]
+            
+            # Prepare data
+            cameras = self.last_calculation_result["cameras"]
+            nvr_config = self.last_calculation_result["nvr_config"]
+            
+            # Group NVRs by SKU and HDD config
+            nvr_groups = {}
+            for unit in nvr_config:
+                sku = unit["m"]["SKU"]
+                hdd_cap = unit["cap"]
+                hdd_qty = unit["qty"]
+                key = (sku, hdd_cap, hdd_qty)
+                if key not in nvr_groups:
+                    nvr_groups[key] = {
+                        "sku": sku,
+                        "nvr_name": unit["name"],
+                        "hdd_cap": hdd_cap,
+                        "hdd_qty": hdd_qty,
+                        "count": 1,
+                        "price": unit["m"]["Price"]
+                    }
+                else:
+                    nvr_groups[key]["count"] += 1
+            
+            # Prepare data rows
+            excel_rows = []
+            
+            # Add Camera Header
+            excel_rows.append(("", "", "", "", "", "header", "Cameras"))
+            
+            # Add each camera type and its CAMLIC
+            for cam in cameras:
+                cam_name = cam[0]
+                cam_qty = int(cam[1])
+                
+                # Camera row
+                excel_rows.append((cam_name, cam_qty, "", "CCTV", "Camera", "data", ""))
+                # CAMLIC row (immediately after each camera)
+                excel_rows.append(("CAMLIC", 1, "ch", "CCTV", "Software", "data", ""))
+            
+            # Add NVRs Header
+            excel_rows.append(("", "", "", "", "", "header", "NVRs"))
+            
+            # Add NVR groups and their HDDs
+            for key, group in nvr_groups.items():
+                # NVR row
+                excel_rows.append((group["sku"], group["count"], "", "CCTV", "NVR", "data", ""))
+                # HDD row for this NVR
+                hdd_part_no = f"{group['hdd_cap']}TB HDD"
+                excel_rows.append((hdd_part_no, group["hdd_qty"], "ch", "CCTV", "HDD", "data", ""))
+            
+            # Add VMS Header
+            excel_rows.append(("", "", "", "", "", "header", "VMS"))
+            
+            # Add VMS row (Sys is blank, not "ch")
+            excel_rows.append(("VMS", 1, "", "CCTV", "Software", "data", ""))
+            
+            # Write to Excel
+            current_row = 9
+            
+            # Clear existing data from row 9 downward
+            last_row = ws.used_range.last_cell.row
+            if last_row >= current_row:
+                for row in range(current_row, last_row + 1):
+                    ws.range(f"F{row}").value = None
+                    ws.range(f"G{row}").value = None
+                    ws.range(f"H{row}").value = None
+                    ws.range(f"K{row}").value = None
+                    ws.range(f"L{row}").value = None
+                    ws.range(f"M{row}").value = None
+            
+            # Write new data
+            for row_data in excel_rows:
+                part_no, qty, sys, solution, category, row_type, header_text = row_data
+                
+                if row_type == "header":
+                    # Clear the row first
+                    ws.range(f"F{current_row}:M{current_row}").value = None
+                    # Put header text in column G
+                    if header_text:
+                        ws.range(f"G{current_row}").value = header_text
+                    # Apply Header 1 style
+                    try:
+                        ws.range(f"F{current_row}:M{current_row}").api.Style = "Header 1"
+                    except Exception:
+                        try:
+                            ws.range(f"G{current_row}").api.Style = "Header 1"
+                        except:
+                            pass
+                else:
+                    if part_no:
+                        ws.range(f"F{current_row}").value = part_no
+                    if qty:
+                        ws.range(f"H{current_row}").value = qty
+                    if sys:
+                        ws.range(f"K{current_row}").value = sys
+                    if solution:
+                        ws.range(f"L{current_row}").value = solution
+                    if category:
+                        ws.range(f"M{current_row}").value = category
+                
+                current_row += 1
+            
+            # Save the file
+            if save_option:
+                wb.save(output_file)
+            else:
+                wb.save()
+            
+            wb.close()
+            app.quit()
+            
+            progress_msg.destroy()
+            
+            messagebox.showinfo("Success", 
+                f"Excel file has been exported successfully!\n\n"
+                f"File: {os.path.basename(output_file)}\n"
+                f"Sheet: {sheet_name}\n"
+                f"Rows exported: {len(excel_rows)}")
+            
+        except Exception as e:
+            progress_msg.destroy()
+            if app:
+                try:
+                    app.quit()
+                except:
+                    pass
+            messagebox.showerror("Export Error", f"Failed to export to Excel:\n\n{str(e)}")
+
 # ─────────────────────────── Entry Point ───────────────────────────────────
 if __name__ == "__main__":
     root = tk.Tk()
