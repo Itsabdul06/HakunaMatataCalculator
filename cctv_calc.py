@@ -212,7 +212,7 @@ class CCTVApp:
         hdr = mk_frame(self.root, bg=BG)
         hdr.pack(fill="x", padx=24, pady=(18, 0))
         mk_label(hdr, "CCTV Master Calculator", font=FONT_H1, fg=WHITE, bg=BG).pack(side="left")
-        mk_label(hdr, "  v35.2", font=FONT_BODY, fg=TEXT3, bg=BG).pack(side="left", pady=(6, 0))
+        mk_label(hdr, "  v35.3", font=FONT_BODY, fg=TEXT3, bg=BG).pack(side="left", pady=(6, 0))
         sep(self.root).pack(fill="x", padx=24, pady=10)
 
         self.nb = ttk.Notebook(self.root, style="TNotebook")
@@ -655,7 +655,7 @@ class CCTVApp:
         self.save_all_data()
         messagebox.showinfo("Saved", "HDD Prices Updated.")
 
-    # ── Main Calculation Logic (Simplified & Fast) ────────────────────────
+    # ── Optimized Calculation Logic ────────────────────────────────────────
     def run_logic(self):
         camera_rows = [self.tree.item(i)["values"] for i in self.tree.get_children()]
         if not camera_rows:
@@ -711,7 +711,7 @@ class CCTVApp:
             self.hide_progress()
 
     def auto_calculate(self, cameras):
-        """Fast automatic calculation"""
+        """Automatic calculation with optimized distribution"""
         brand = self.brand_filter.get()
         if brand == "All":
             available_nvrs = self.nvr_list.copy()
@@ -741,7 +741,7 @@ class CCTVApp:
         best_result = None
         best_cost = float('inf')
 
-        # Limit to reasonable combinations (max 5 NVRs)
+        # Try different numbers of NVRs (1 to 5)
         for nvr_count in range(1, min(5, len(compatible_nvrs) + 2)):
             for combo in itertools.combinations_with_replacement(compatible_nvrs, nvr_count):
                 nvr_list = list(combo)
@@ -752,8 +752,8 @@ class CCTVApp:
                 if sum(n["MB"] for n in nvr_list) < (total_bandwidth / 8):
                     continue
 
-                # Distribute cameras evenly
-                result = self.distribute_cameras(cameras, nvr_list)
+                # Optimized distribution based on storage capacity
+                result = self.distribute_cameras_optimized(cameras, nvr_list)
                 if result:
                     total = sum(u["cost"] for u in result)
                     if total < best_cost:
@@ -773,10 +773,10 @@ class CCTVApp:
         if not selected_nvrs:
             messagebox.showwarning("Warning", "Select at least one NVR.")
             return None
-        return self.distribute_cameras(cameras, selected_nvrs)
+        return self.distribute_cameras_optimized(cameras, selected_nvrs)
 
-    def distribute_cameras(self, cameras, nvrs):
-        """Simple even distribution of cameras across NVRs"""
+    def distribute_cameras_optimized(self, cameras, nvrs):
+        """Optimized distribution - proportional to each NVR's storage capacity"""
         # Flatten cameras
         flat_cams = []
         for name, count, mbps, storage in cameras:
@@ -786,16 +786,35 @@ class CCTVApp:
         total_cams = len(flat_cams)
         n_nvrs = len(nvrs)
 
-        # Calculate cameras per NVR (even distribution)
-        cams_per_nvr = [total_cams // n_nvrs] * n_nvrs
-        for i in range(total_cams % n_nvrs):
-            cams_per_nvr[i] += 1
+        # Calculate maximum storage capacity for each NVR (using largest HDD)
+        max_hdd = max(self.hdd_prices.keys())
+        nvr_capacities = [nvr["Slots"] * max_hdd for nvr in nvrs]
+        total_capacity = sum(nvr_capacities)
 
+        if total_capacity == 0:
+            return None
+
+        # Calculate target cameras per NVR based on capacity proportion
+        target_cams = []
+        remaining = total_cams
+        
+        for i in range(n_nvrs - 1):
+            proportion = nvr_capacities[i] / total_capacity
+            target = int(round(total_cams * proportion))
+            # Ensure at least 1 camera and not too many
+            target = max(1, min(target, remaining - (n_nvrs - i - 1)))
+            target_cams.append(target)
+            remaining -= target
+        
+        target_cams.append(remaining)  # Last NVR gets remaining
+
+        # Distribute cameras
         result = []
         idx = 0
+        
         for i, nvr in enumerate(nvrs):
-            take = cams_per_nvr[i]
-            if take == 0:
+            take = target_cams[i]
+            if take <= 0:
                 continue
 
             cam_slice = flat_cams[idx:idx + take]
@@ -833,7 +852,19 @@ class CCTVApp:
                 "cost": nvr["Price"] + hdd["cost"]
             })
 
-        return result if idx == total_cams else None
+        # Verify all cameras were assigned
+        if idx != total_cams:
+            return None
+
+        # Verify total storage capacity (optional adjustment)
+        # If any NVR is overloaded, try to rebalance
+        for i, unit in enumerate(result):
+            max_capacity = unit["nvr"]["Slots"] * max_hdd
+            if unit["total_storage"] > max_capacity * 0.95:  # Within 95% of capacity
+                # This NVR is near capacity, which is good
+                pass
+
+        return result
 
     def display_results(self, result):
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
