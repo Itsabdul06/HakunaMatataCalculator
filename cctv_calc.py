@@ -8,7 +8,7 @@ HDD pricing, auto/manual calculation, report export to Excel.
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import math, itertools, json, os
-from datetime datetime
+from datetime import datetime
 
 # Try to import xlwings for Excel export
 try:
