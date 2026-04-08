@@ -68,22 +68,16 @@ FONT_LRGE = ("Segoe UI", 11, "bold")
 MAX_NVR_COMBOS = 6
 
 # ─────────────────────────── Core Logic ────────────────────────────────────
-# ─────────────────────────── Core Logic ────────────────────────────────────
-# ─────────────────────────── Core Logic ────────────────────────────────────
 def get_best_hdd(required_tb, slots, parity, price_dict):
     """
     Find the most cost-effective HDD configuration.
     All HDDs in an NVR must be the same capacity (no mixing allowed).
-    For JBOD (parity=0): Same size drives only
-    For RAID (parity>0): Same size drives required
     """
     best_cost, best_cfg = float('inf'), None
     
-    # Try each available HDD size (sorted from smallest to largest)
     for cap in sorted(price_dict.keys()):
         price = price_dict[cap]
         
-        # Skip if drive capacity is 0
         if cap <= 0:
             continue
             
@@ -96,22 +90,17 @@ def get_best_hdd(required_tb, slots, parity, price_dict):
             data_req = int(math.ceil(required_tb / cap))
             total_drives = data_req + parity
         
-        # Check if we have enough slots
         if total_drives > slots:
             continue
         
-        # Ensure minimum drives for RAID (at least parity+1)
         min_drives = parity + 1
         if total_drives < min_drives:
             total_drives = min_drives
-            # For RAID, if we need minimum drives, recalculate data drives
             if parity > 0:
                 data_req = total_drives - parity
         
-        # Calculate total cost
         cost = total_drives * price
         
-        # Update best configuration
         if cost < best_cost:
             best_cost = cost
             best_cfg = {
@@ -123,6 +112,7 @@ def get_best_hdd(required_tb, slots, parity, price_dict):
             }
     
     return best_cfg
+
 # ─────────────────────────── Widget Helpers ────────────────────────────────
 def mk_frame(parent, bg=SURFACE, **kw):
     return tk.Frame(parent, bg=bg, **kw)
@@ -238,7 +228,7 @@ class CCTVApp:
         hdr = mk_frame(self.root, bg=BG)
         hdr.pack(fill="x", padx=24, pady=(18, 0))
         mk_label(hdr, "CCTV Master Calculator", font=FONT_H1, fg=WHITE, bg=BG).pack(side="left")
-        mk_label(hdr, "  v34.4", font=FONT_BODY, fg=TEXT3, bg=BG).pack(side="left", pady=(6, 0))
+        mk_label(hdr, "  v34.5", font=FONT_BODY, fg=TEXT3, bg=BG).pack(side="left", pady=(6, 0))
         sep(self.root).pack(fill="x", padx=24, pady=10)
 
         self.nb = ttk.Notebook(self.root, style="TNotebook")
@@ -366,7 +356,7 @@ class CCTVApp:
         mk_label(ctrl, "Calculation Settings", font=FONT_H2, fg=ACCENT, bg=SURFACE).pack(
             anchor="w", padx=14, pady=(10, 8))
 
-        # Row 1: Mode and RAID (using pack only)
+        # Row 1: Mode and RAID
         row1 = mk_frame(ctrl, bg=SURFACE)
         row1.pack(fill="x", padx=14, pady=(0, 10))
 
@@ -395,17 +385,17 @@ class CCTVApp:
         row2.pack(fill="x", padx=14, pady=(0, 10))
         
         mk_label(row2, "NVR Brand:", bg=SURFACE, fg=TEXT2).pack(side="left", padx=(0, 6))
+        self.brand_filter = tk.StringVar(value="All")
         brand_combo = ttk.Combobox(row2, textvariable=self.brand_filter, width=20,
-                                   state="readonly", values=["All", "American Dynamics", "Holis"],
-                                   command=lambda x: self.refresh_nvr_dropdowns())
+                                   state="readonly", values=["All", "American Dynamics", "Holis"])
+        brand_combo.bind("<<ComboboxSelected>>", lambda x: self.refresh_nvr_dropdowns())
         brand_combo.pack(side="left")
         mk_label(row2, "(Filters NVRs shown below)", bg=SURFACE, fg=TEXT3, font=FONT_BODY).pack(side="left", padx=(10, 0))
 
-        # Manual NVR selection frame (hidden by default)
+        # Manual NVR selection frame
         self.manual_frame = mk_frame(ctrl, bg=SURFACE)
         self.manual_frame.pack(fill="x", padx=14, pady=(0, 10))
         
-        # Use pack inside manual frame to avoid grid/pack conflicts
         manual_label = mk_label(self.manual_frame, "Manual NVR Selection:", font=FONT_H2, fg=ACCENT, bg=SURFACE)
         manual_label.pack(anchor="w", pady=(0, 10))
         
@@ -422,7 +412,7 @@ class CCTVApp:
             cb.pack(side="left", padx=(0, 10))
             self.manual_combos.append(cb)
         
-        self.manual_frame.pack_forget()  # Start hidden
+        self.manual_frame.pack_forget()
 
         # Buttons row
         btn_row = mk_frame(ctrl, bg=SURFACE)
@@ -466,7 +456,6 @@ class CCTVApp:
         self._on_mode_change()
 
     def _on_mode_change(self):
-        """Handle switching between AUTO and MANUAL modes"""
         if self.auto_mode.get() == "MANUAL":
             self.refresh_nvr_dropdowns()
             self.manual_frame.pack(fill="x", padx=14, pady=(0, 10))
@@ -474,7 +463,6 @@ class CCTVApp:
             self.manual_frame.pack_forget()
 
     def refresh_nvr_dropdowns(self):
-        """Update all manual NVR comboboxes with current NVR list (filtered by brand)"""
         brand = self.brand_filter.get()
         if brand == "All":
             filtered_nvrs = self.nvr_list
@@ -778,12 +766,8 @@ class CCTVApp:
             for c in u_brk:
                 cam_breakdown[c[0]] = cam_breakdown.get(c[0], 0) + 1
 
-            if hd.get("mixed", False):
-                drive_str = " + ".join([f"{d}TB" for d in hd["drives"]])
-                total_cap = hd.get("total_capacity", hd["qty"] * hd["cap"])
-            else:
-                drive_str = f"{hd['qty']} × {hd['cap']} TB"
-                total_cap = hd["qty"] * hd["cap"]
+            drive_str = f"{hd['qty']} × {hd['cap']} TB"
+            total_cap = hd['qty'] * hd['cap']
 
             u_list.append({
                 "name": hw["Name"],
@@ -796,12 +780,12 @@ class CCTVApp:
                 "qty": hd["qty"],
                 "cap": hd["cap"],
                 "total_tb": total_cap,
-                "usable_tb": hd.get("data", hd["qty"]) * hd["cap"] if not hd.get("mixed") else total_cap,
+                "usable_tb": hd["data"] * hd["cap"],
                 "cost": hw["Price"] + hd["cost"],
                 "h": hd,
                 "total_storage": u_tb,
                 "drive_config": drive_str,
-                "is_mixed": hd.get("mixed", False)
+                "is_mixed": False
             })
 
         if cur_c < total_cameras:
@@ -859,9 +843,15 @@ class CCTVApp:
 
                 best_cfg, best_cost = None, float("inf")
 
-                # Try different numbers of NVRs (1 to 6)
+                total_combinations = 0
+                max_combinations = 5000
+
                 for n_u in range(1, 7):
                     for combo in itertools.combinations_with_replacement(pool, n_u):
+                        total_combinations += 1
+                        if total_combinations > max_combinations:
+                            break
+                        
                         hw_c = list(combo)
 
                         max_ch = sum(n["CH"] for n in hw_c)
@@ -883,6 +873,9 @@ class CCTVApp:
                             if cost < best_cost:
                                 best_cost = cost
                                 best_cfg = res
+                    
+                    if total_combinations > max_combinations:
+                        break
 
                 txt = best_cfg
 
@@ -962,10 +955,7 @@ class CCTVApp:
                 write("\n", "value")
             write(f"  Storage:  ", "label")
             write(f"{u['drive_config']}  = {u['total_tb']:.1f} TB  ", "value")
-            if u['is_mixed']:
-                write(f"(mixed capacities)\n", "label")
-            else:
-                write(f"(usable: {u['usable_tb']:.1f} TB)\n", "label")
+            write(f"(usable: {u['usable_tb']:.1f} TB)\n", "label")
             write(f"  Cost:     ", "label")
             write(f"NVR ${u['m']['Price']:,.2f}  +  HDD ${u['h']['cost']:,.2f}  =  ${u['cost']:,.2f}\n", "cost")
 
