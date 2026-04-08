@@ -115,12 +115,27 @@ def get_best_hdd(required_tb, slots, parity, price_dict):
 
 def calculate_nvr_cost(nvr, cameras_assigned, raid_mode, hdd_prices):
     """Calculate the total cost for a single NVR with assigned cameras"""
-    if cameras_assigned == 0:
+    if not cameras_assigned:
         return None
     
     # Calculate storage and bandwidth requirements
-    total_storage = sum(cam[3] for cam in cameras_assigned)
-    total_bandwidth_mbps = sum(cam[2] for cam in cameras_assigned)
+    # cameras_assigned is a list of tuples: (name, mbps, storage)
+    total_storage = 0
+    total_bandwidth_mbps = 0
+    
+    for cam in cameras_assigned:
+        # Handle different tuple structures
+        if len(cam) == 3:
+            # Format: (name, mbps, storage)
+            total_bandwidth_mbps += cam[1]
+            total_storage += cam[2]
+        elif len(cam) == 4:
+            # Format: (name, count, mbps, storage) - but count should be 1 here
+            total_bandwidth_mbps += cam[2]
+            total_storage += cam[3]
+        else:
+            continue
+    
     total_bandwidth_mbps_per_sec = total_bandwidth_mbps / 8
     
     # Check limits
@@ -140,10 +155,17 @@ def calculate_nvr_cost(nvr, cameras_assigned, raid_mode, hdd_prices):
     # Calculate total cost
     total_cost = nvr["Price"] + hdd_config["cost"]
     
+    # Count cameras by type
+    cam_counts = {}
+    for cam in cameras_assigned:
+        name = cam[0] if len(cam) >= 1 else "Unknown"
+        cam_counts[name] = cam_counts.get(name, 0) + 1
+    
     return {
         "nvr": nvr,
         "cameras": cameras_assigned,
         "camera_count": len(cameras_assigned),
+        "cam_breakdown": cam_counts,
         "total_storage": total_storage,
         "total_bandwidth": total_bandwidth_mbps,
         "hdd_config": hdd_config,
@@ -153,29 +175,38 @@ def calculate_nvr_cost(nvr, cameras_assigned, raid_mode, hdd_prices):
 def find_optimal_distribution(cameras, nvrs, raid_mode, hdd_prices):
     """
     Find the optimal distribution of cameras across NVRs.
-    Uses a greedy approach with local optimization.
+    Uses a recursive approach to try different splits.
     """
     if not cameras or not nvrs:
         return None
     
-    # Flatten cameras list
+    # Flatten cameras list - handle both tuple formats
     flat_cameras = []
     for cam in cameras:
-        cam_name = cam[0]
-        cam_count = int(cam[1])
-        cam_mbps = float(cam[2])
-        cam_tb = float(cam[3])
-        for _ in range(cam_count):
-            flat_cameras.append((cam_name, cam_mbps, cam_tb))
+        # cam is a tuple from the tree view: (name, count, mbps, storage)
+        if len(cam) == 4:
+            cam_name = str(cam[0])
+            cam_count = int(cam[1])
+            cam_mbps = float(cam[2])
+            cam_tb = float(cam[3])
+            
+            for _ in range(cam_count):
+                flat_cameras.append((cam_name, cam_mbps, cam_tb))
+        else:
+            continue
+    
+    if not flat_cameras:
+        return None
+    
+    total_cameras = len(flat_cameras)
     
     # Sort NVRs by price per slot (cheapest first)
     sorted_nvrs = sorted(nvrs, key=lambda x: x["Price"] / x["Slots"] if x["Slots"] > 0 else float('inf'))
     
-    # Try different distributions
     best_result = None
     best_cost = float('inf')
     
-    # Try each possible number of cameras per NVR using a recursive approach
+    # Try different splits using recursion
     def try_distribution(index, remaining_cameras, current_assignment):
         nonlocal best_result, best_cost
         
@@ -191,7 +222,7 @@ def find_optimal_distribution(cameras, nvrs, raid_mode, hdd_prices):
             
             for i, nvr in enumerate(sorted_nvrs):
                 take = assignment[i]
-                if take > 0:
+                if take > 0 and cam_idx + take <= len(flat_cameras):
                     cameras_for_nvr = flat_cameras[cam_idx:cam_idx + take]
                     cam_idx += take
                     
@@ -201,32 +232,37 @@ def find_optimal_distribution(cameras, nvrs, raid_mode, hdd_prices):
                         break
                     result.append(nvr_result)
                     total_cost += nvr_result["cost"]
+                elif take > 0:
+                    valid = False
+                    break
             
             if valid and cam_idx == len(flat_cameras) and total_cost < best_cost:
                 best_cost = total_cost
                 best_result = result
             return
         
-        # Try different splits for current NVR
+        # Calculate min and max cameras for current NVR
         min_for_current = 1
         max_for_current = remaining_cameras - (len(sorted_nvrs) - index - 1)
         
-        # Prioritize splits that make sense for this NVR's capacity
+        if max_for_current < min_for_current:
+            return
+        
+        # Limit by NVR capacity
         nvr = sorted_nvrs[index]
         max_hdd_size = max(hdd_prices.keys())
         max_storage_capacity = nvr["Slots"] * max_hdd_size
         avg_camera_storage = 3  # 3TB per camera
         
-        max_cameras_by_storage = int(max_storage_capacity / avg_camera_storage)
+        max_cameras_by_storage = int(max_storage_capacity / avg_camera_storage) if avg_camera_storage > 0 else remaining_cameras
         max_for_current = min(max_for_current, max_cameras_by_storage)
         
-        # Try splits from largest to smallest (to find cheaper solutions faster)
-        for take in range(min(max_for_current, remaining_cameras - (len(sorted_nvrs) - index - 1)), min_for_current - 1, -1):
-            if take <= remaining_cameras:
+        # Try splits from largest to smallest
+        for take in range(min(max_for_current, remaining_cameras), min_for_current - 1, -1):
+            if take <= remaining_cameras and take >= min_for_current:
                 try_distribution(index + 1, remaining_cameras - take, current_assignment + [take])
     
-    # Start recursion
-    try_distribution(0, len(flat_cameras), [])
+    try_distribution(0, total_cameras, [])
     
     return best_result
 
@@ -345,7 +381,7 @@ class CCTVApp:
         hdr = mk_frame(self.root, bg=BG)
         hdr.pack(fill="x", padx=24, pady=(18, 0))
         mk_label(hdr, "CCTV Master Calculator", font=FONT_H1, fg=WHITE, bg=BG).pack(side="left")
-        mk_label(hdr, "  v35.0", font=FONT_BODY, fg=TEXT3, bg=BG).pack(side="left", pady=(6, 0))
+        mk_label(hdr, "  v35.1", font=FONT_BODY, fg=TEXT3, bg=BG).pack(side="left", pady=(6, 0))
         sep(self.root).pack(fill="x", padx=24, pady=10)
 
         self.nb = ttk.Notebook(self.root, style="TNotebook")
@@ -994,7 +1030,6 @@ class CCTVApp:
         
         for i, unit in enumerate(result, 1):
             nvr = unit["nvr"]
-            cameras = unit["cameras"]
             hdd = unit["hdd_config"]
             
             write(f"\nUNIT #{i}: {nvr['Name']}\n", "best")
@@ -1010,11 +1045,8 @@ class CCTVApp:
             write(f"{unit['camera_count']} total  ", "value")
             
             # Count cameras by type
-            cam_counts = {}
-            for cam in cameras:
-                cam_counts[cam[0]] = cam_counts.get(cam[0], 0) + 1
-            if cam_counts:
-                parts = ",  ".join(f"{name}: {count}" for name, count in cam_counts.items())
+            if unit.get("cam_breakdown"):
+                parts = ",  ".join(f"{name}: {count}" for name, count in unit["cam_breakdown"].items())
                 write(f"({parts})\n", "value")
             else:
                 write("\n", "value")
