@@ -69,6 +69,7 @@ MAX_NVR_COMBOS = 6
 
 # ─────────────────────────── Core Logic ────────────────────────────────────
 # ─────────────────────────── Core Logic ────────────────────────────────────
+# ─────────────────────────── Core Logic ────────────────────────────────────
 def get_best_hdd(required_tb, slots, parity, price_dict):
     """
     Find the most cost-effective HDD configuration.
@@ -78,26 +79,34 @@ def get_best_hdd(required_tb, slots, parity, price_dict):
     """
     best_cost, best_cfg = float('inf'), None
     
-    # Try each available HDD size
+    # Try each available HDD size (sorted from smallest to largest)
     for cap in sorted(price_dict.keys()):
         price = price_dict[cap]
-        min_drives = parity + 1
         
+        # Skip if drive capacity is 0
+        if cap <= 0:
+            continue
+            
         if parity == 0:
             # JBOD mode - calculate how many drives needed
-            data_req = math.ceil(required_tb / cap)
+            data_req = int(math.ceil(required_tb / cap))
             total_drives = data_req
         else:
             # RAID mode - data drives + parity drives
-            data_req = math.ceil(required_tb / cap)
+            data_req = int(math.ceil(required_tb / cap))
             total_drives = data_req + parity
         
         # Check if we have enough slots
         if total_drives > slots:
             continue
         
-        # Ensure minimum drives for RAID
-        total_drives = max(total_drives, min_drives)
+        # Ensure minimum drives for RAID (at least parity+1)
+        min_drives = parity + 1
+        if total_drives < min_drives:
+            total_drives = min_drives
+            # For RAID, if we need minimum drives, recalculate data drives
+            if parity > 0:
+                data_req = total_drives - parity
         
         # Calculate total cost
         cost = total_drives * price
@@ -110,8 +119,6 @@ def get_best_hdd(required_tb, slots, parity, price_dict):
                 "qty": total_drives,
                 "data": data_req,
                 "cost": cost,
-                "mixed": False,
-                "drives": [cap] * total_drives,
                 "total_capacity": total_drives * cap
             }
     
