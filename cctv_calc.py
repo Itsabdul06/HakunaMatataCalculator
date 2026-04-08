@@ -949,166 +949,186 @@ def run_logic(self):
         self.nb.select(self.tabs[1])
 
     # ── Excel Export Function with xlwings ─────────────────────────────────
-    def export_to_excel(self):
-        """Export calculation results to Excel template using xlwings (preserves all formatting)"""
-        
-        # Check if we have calculation results
-        if not self.last_calculation_result:
-            messagebox.showwarning("Warning", "Run a calculation first before exporting!")
-            return
-        
-        # Check if xlwings is available
-        if not EXCEL_AVAILABLE:
-            messagebox.showerror("Error", 
-                "Excel export requires xlwings library.\n\n"
-                "Please install it using:\npip install xlwings")
-            return
-        
-        # Ask for template file location
-        template_file = filedialog.askopenfilename(
-            title="Select Excel Template",
+def export_to_excel(self):
+    """Export calculation results to Excel template using xlwings (preserves all formatting)"""
+    
+    # Check if we have calculation results
+    if not self.last_calculation_result:
+        messagebox.showwarning("Warning", "Run a calculation first before exporting!")
+        return
+    
+    # Check if xlwings is available
+    if not EXCEL_AVAILABLE:
+        messagebox.showerror("Error", 
+            "Excel export requires xlwings library.\n\n"
+            "Please install it using:\npip install xlwings")
+        return
+    
+    # Ask for template file location
+    template_file = filedialog.askopenfilename(
+        title="Select Excel Template",
+        filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
+        defaultextension=".xlsx"
+    )
+    
+    if not template_file:
+        return
+    
+    # Ask user if they want to save as a new file or overwrite
+    save_option = messagebox.askyesno(
+        "Save Option", 
+        "Do you want to save as a new file?\n\n"
+        "• Yes = Save as new file (preserves template)\n"
+        "• No = Overwrite the template file"
+    )
+    
+    output_file = template_file
+    if save_option:
+        # Ask for new file location
+        output_file = filedialog.asksaveasfilename(
+            title="Save Excel File As",
+            defaultextension=".xlsx",
             filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
-            defaultextension=".xlsx"
+            initialfile=f"CCTV_Quote_{datetime.now().strftime('%Y%m%d_%H%M')}"
         )
-        
-        if not template_file:
+        if not output_file:
             return
+    
+    # Show progress
+    progress_msg = tk.Toplevel(self.root)
+    progress_msg.title("Exporting...")
+    progress_msg.configure(bg=SURFACE)
+    progress_msg.geometry("300x80")
+    progress_msg.transient(self.root)
+    progress_msg.grab_set()
+    
+    x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 150
+    y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 40
+    progress_msg.geometry(f"300x80+{x}+{y}")
+    
+    mk_label(progress_msg, "Exporting to Excel...", 
+            font=FONT_H2, fg=ACCENT, bg=SURFACE).pack(pady=(20, 10))
+    self.root.update()
+    
+    # Initialize xlwings app (Excel in background)
+    app = None
+    wb = None
+    
+    try:
+        # Open Excel invisibly
+        app = xw.App(visible=False, add_book=False)
         
-        # Ask user if they want to save as a new file or overwrite
-        save_option = messagebox.askyesno(
-            "Save Option", 
-            "Do you want to save as a new file?\n\n"
-            "• Yes = Save as new file (preserves template)\n"
-            "• No = Overwrite the template file"
-        )
+        # Open the template
+        wb = app.books.open(template_file)
         
-        output_file = template_file
-        if save_option:
-            # Ask for new file location
-            output_file = filedialog.asksaveasfilename(
-                title="Save Excel File As",
-                defaultextension=".xlsx",
-                filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
-                initialfile=f"CCTV_Quote_{datetime.now().strftime('%Y%m%d_%H%M')}"
-            )
-            if not output_file:
-                return
+        # Find the offer sheet (case-insensitive)
+        sheet_name = None
+        for name in wb.sheet_names:
+            if name.lower() == "offer":
+                sheet_name = name
+                break
         
-        # Show progress
-        progress_msg = tk.Toplevel(self.root)
-        progress_msg.title("Exporting...")
-        progress_msg.configure(bg=SURFACE)
-        progress_msg.geometry("300x80")
-        progress_msg.transient(self.root)
-        progress_msg.grab_set()
+        if sheet_name is None:
+            raise Exception("Sheet 'offer' not found in the template!")
         
-        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 150
-        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 40
-        progress_msg.geometry(f"300x80+{x}+{y}")
+        ws = wb.sheets[sheet_name]
         
-        mk_label(progress_msg, "Exporting to Excel...", 
-                font=FONT_H2, fg=ACCENT, bg=SURFACE).pack(pady=(20, 10))
-        self.root.update()
+        # Prepare data
+        cameras = self.last_calculation_result["cameras"]
+        nvr_config = self.last_calculation_result["nvr_config"]
         
-        # Initialize xlwings app (Excel in background)
-        app = None
-        wb = None
+        # Group NVRs by SKU and HDD config
+        nvr_groups = {}
+        for unit in nvr_config:
+            sku = unit["m"]["SKU"]
+            hdd_cap = unit["cap"]
+            hdd_qty = unit["qty"]
+            key = (sku, hdd_cap, hdd_qty)
+            if key not in nvr_groups:
+                nvr_groups[key] = {
+                    "sku": sku,
+                    "nvr_name": unit["name"],
+                    "hdd_cap": hdd_cap,
+                    "hdd_qty": hdd_qty,
+                    "count": 1,
+                    "price": unit["m"]["Price"]
+                }
+            else:
+                nvr_groups[key]["count"] += 1
         
-        try:
-            # Open Excel invisibly
-            app = xw.App(visible=False, add_book=False)
+        # Prepare data rows
+        # Each row is: (part_no, qty, sys, solution, category, row_type, header_text)
+        # header_text is only used for header rows
+        excel_rows = []
+        
+        # Add Camera Header
+        excel_rows.append(("", "", "", "", "", "header", "Cameras"))
+        
+        # Add each camera type and its CAMLIC
+        for cam in cameras:
+            cam_name = cam[0]
+            cam_qty = int(cam[1])
             
-            # Open the template
-            wb = app.books.open(template_file)
+            # Camera row
+            excel_rows.append((cam_name, cam_qty, "", "CCTV", "Camera", "data", ""))
+            # CAMLIC row (immediately after each camera)
+            excel_rows.append(("CAMLIC", 1, "ch", "CCTV", "Software", "data", ""))
+        
+        # Add NVRs Header
+        excel_rows.append(("", "", "", "", "", "header", "NVRs"))
+        
+        # Add NVR groups and their HDDs
+        for key, group in nvr_groups.items():
+            # NVR row
+            excel_rows.append((group["sku"], group["count"], "", "CCTV", "NVR", "data", ""))
+            # HDD row for this NVR
+            hdd_part_no = f"{group['hdd_cap']}TB HDD"
+            excel_rows.append((hdd_part_no, group["hdd_qty"], "ch", "CCTV", "HDD", "data", ""))
+        
+        # Add VMS Header
+        excel_rows.append(("", "", "", "", "", "header", "VMS"))
+        
+        # Add VMS row (Sys is blank, not "ch")
+        excel_rows.append(("VMS", 1, "", "CCTV", "Software", "data", ""))
+        
+        # Write to Excel
+        # Column mapping: F=6, G=7, H=8, K=11, L=12, M=13 (1-indexed)
+        current_row = 9
+        
+        # Clear existing data from row 9 downward (only columns we write to)
+        # Find last used row
+        last_row = ws.used_range.last_cell.row
+        if last_row >= current_row:
+            for row in range(current_row, last_row + 1):
+                # Clear only the columns we write to (F, G, H, K, L, M)
+                ws.range(f"F{row}").value = None
+                ws.range(f"G{row}").value = None
+                ws.range(f"H{row}").value = None
+                ws.range(f"K{row}").value = None
+                ws.range(f"L{row}").value = None
+                ws.range(f"M{row}").value = None
+        
+        # Write new data
+        for row_data in excel_rows:
+            part_no, qty, sys, solution, category, row_type, header_text = row_data
             
-            # Find the offer sheet (case-insensitive)
-            sheet_name = None
-            for name in wb.sheet_names:
-                if name.lower() == "offer":
-                    sheet_name = name
-                    break
-            
-            if sheet_name is None:
-                raise Exception("Sheet 'offer' not found in the template!")
-            
-            ws = wb.sheets[sheet_name]
-            
-            # Prepare data
-            cameras = self.last_calculation_result["cameras"]
-            nvr_config = self.last_calculation_result["nvr_config"]
-            
-            # Group NVRs by SKU and HDD config
-            nvr_groups = {}
-            for unit in nvr_config:
-                sku = unit["m"]["SKU"]
-                hdd_cap = unit["cap"]
-                hdd_qty = unit["qty"]
-                key = (sku, hdd_cap, hdd_qty)
-                if key not in nvr_groups:
-                    nvr_groups[key] = {
-                        "sku": sku,
-                        "nvr_name": unit["name"],
-                        "hdd_cap": hdd_cap,
-                        "hdd_qty": hdd_qty,
-                        "count": 1,
-                        "price": unit["m"]["Price"]
-                    }
-                else:
-                    nvr_groups[key]["count"] += 1
-            
-            # Prepare data rows
-            excel_rows = []
-            
-            # Add Camera Header
-            excel_rows.append(("Cameras", "", "", "", "", "header"))
-            
-            # Add each camera type and its CAMLIC
-            for cam in cameras:
-                cam_name = cam[0]
-                cam_qty = int(cam[1])
-                
-                # Camera row
-                excel_rows.append((cam_name, cam_qty, "", "CCTV", "Camera", "data"))
-                # CAMLIC row (immediately after each camera)
-                excel_rows.append(("CAMLIC", 1, "ch", "CCTV", "Software", "data"))
-            
-            # Add NVRs Header
-            excel_rows.append(("NVRs", "", "", "", "", "header"))
-            
-            # Add NVR groups and their HDDs
-            for key, group in nvr_groups.items():
-                # NVR row
-                excel_rows.append((group["sku"], group["count"], "", "CCTV", "NVR", "data"))
-                # HDD row for this NVR
-                hdd_part_no = f"{group['hdd_cap']}TB HDD"
-                excel_rows.append((hdd_part_no, group["hdd_qty"], "ch", "CCTV", "HDD", "data"))
-            
-            # Add VMS Header
-            excel_rows.append(("VMS", "", "", "", "", "header"))
-            
-            # Add VMS row (Sys is blank, not "ch")
-            excel_rows.append(("VMS", 1, "", "CCTV", "Software", "data"))
-            
-            # Write to Excel (overwrite only columns F, H, K, L, M)
-            # Column mapping: F=6, H=8, K=11, L=12, M=13 (1-indexed)
-            current_row = 9
-            
-            # Clear existing data from row 9 downward (only columns we write to)
-            # Find last used row
-            last_row = ws.used_range.last_cell.row
-            if last_row >= current_row:
-                for row in range(current_row, last_row + 1):
-                    # Clear only the columns we write to
-                    ws.range(f"F{row}").value = None
-                    ws.range(f"H{row}").value = None
-                    ws.range(f"K{row}").value = None
-                    ws.range(f"L{row}").value = None
-                    ws.range(f"M{row}").value = None
-            
-            # Write new data
-            for row_data in excel_rows:
-                part_no, qty, sys, solution, category, row_type = row_data
-                
+            if row_type == "header":
+                # For header rows: clear the row first (F through M)
+                ws.range(f"F{current_row}:M{current_row}").value = None
+                # Put header text in column G
+                if header_text:
+                    ws.range(f"G{current_row}").value = header_text
+                # Apply Header 1 style to the entire range F through M
+                try:
+                    ws.range(f"F{current_row}:M{current_row}").api.Style = "Header 1"
+                except Exception:
+                    # If Header 1 style doesn't exist, try alternative
+                    try:
+                        ws.range(f"G{current_row}").api.Style = "Header 1"
+                    except:
+                        pass
+            else:
+                # Data rows - write normally
                 if part_no:
                     ws.range(f"F{current_row}").value = part_no
                 if qty:
@@ -1119,45 +1139,36 @@ def run_logic(self):
                     ws.range(f"L{current_row}").value = solution
                 if category:
                     ws.range(f"M{current_row}").value = category
-                
-                # Apply Header 1 style if this is a header row
-                if row_type == "header":
-                    try:
-                        ws.range(f"F{current_row}:M{current_row}").api.Style = "Header 1"
-                    except Exception:
-                        # If Header 1 style doesn't exist, just continue
-                        pass
-                
-                current_row += 1
             
-            # Save the file
-            if save_option:
-                wb.save(output_file)
-            else:
-                wb.save()  # Overwrite original
-            
-            # Close the workbook
-            wb.close()
-            app.quit()
-            
-            # Close progress window
-            progress_msg.destroy()
-            
-            messagebox.showinfo("Success", 
-                f"Excel file has been exported successfully!\n\n"
-                f"File: {os.path.basename(output_file)}\n"
-                f"Sheet: {sheet_name}\n"
-                f"Rows exported: {len(excel_rows)}")
-            
-        except Exception as e:
-            progress_msg.destroy()
-            if app:
-                try:
-                    app.quit()
-                except:
-                    pass
-            messagebox.showerror("Export Error", f"Failed to export to Excel:\n\n{str(e)}")
-
+            current_row += 1
+        
+        # Save the file
+        if save_option:
+            wb.save(output_file)
+        else:
+            wb.save()  # Overwrite original
+        
+        # Close the workbook
+        wb.close()
+        app.quit()
+        
+        # Close progress window
+        progress_msg.destroy()
+        
+        messagebox.showinfo("Success", 
+            f"Excel file has been exported successfully!\n\n"
+            f"File: {os.path.basename(output_file)}\n"
+            f"Sheet: {sheet_name}\n"
+            f"Rows exported: {len(excel_rows)}")
+        
+    except Exception as e:
+        progress_msg.destroy()
+        if app:
+            try:
+                app.quit()
+            except:
+                pass
+        messagebox.showerror("Export Error", f"Failed to export to Excel:\n\n{str(e)}")
 # ─────────────────────────── Entry Point ───────────────────────────────────
 if __name__ == "__main__":
     root = tk.Tk()
