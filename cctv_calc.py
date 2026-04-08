@@ -27,17 +27,17 @@ DEFAULT_HDD_PRICES = {
 }
 
 DEFAULT_NVR_DATA = [
-    {"Name": "1U RAID",        "SKU": "ADVER00N0NP16G", "CH": 32,  "MB": 50,   "Slots": 4,  "Price": 3750.0,  "mode": "RAID"},
-    {"Name": "2U 64 Ch",       "SKU": "ADVER12R0N2H",   "CH": 64,  "MB": 300,  "Slots": 6,  "Price": 10416.7, "mode": "RAID"},
-    {"Name": "2U 100 Ch",      "SKU": "ADVER00RN2J",    "CH": 100, "MB": 600,  "Slots": 8,  "Price": 11666.7, "mode": "RAID"},
-    {"Name": "2U 128 Ch",      "SKU": "ADVER72R5N2H",   "CH": 128, "MB": 600,  "Slots": 12, "Price": 25000.0, "mode": "RAID"},
-    {"Name": "2U Rack 175 Ch", "SKU": "ADVER02RDK",     "CH": 175, "MB": 1000, "Slots": 12, "Price": 13854.2, "mode": "RAID"},
-    {"Name": "2U Rack 200 Ch", "SKU": "ADVER02RDK",     "CH": 200, "MB": 1500, "Slots": 12, "Price": 12812.5, "mode": "RAID"},
-    {"Name": "Micro NVR",      "SKU": "ADVEM00N0NP8AH", "CH": 8,   "MB": 80,   "Slots": 1,  "Price": 1500.0,  "mode": "JBOD"},
-    {"Name": "Desktop JBOD",   "SKU": "ADVED00N0N5H",   "CH": 50,  "MB": 200,  "Slots": 2,  "Price": 2291.7,  "mode": "JBOD"},
-    {"Name": "2U 75 Ch",       "SKU": "ADVER00N0N2J",   "CH": 75,  "MB": 400,  "Slots": 4,  "Price": 5312.5,  "mode": "JBOD"},
-    {"Name": "Holis 8 Ch",     "SKU": "HRN-08013P",     "CH": 8,   "MB": 160,  "Slots": 1,  "Price": 520.85,  "mode": "JBOD"},
-    {"Name": "Holis 16 Ch",    "SKU": "HRN-16023P",     "CH": 16,  "MB": 320,  "Slots": 2,  "Price": 770.85,  "mode": "JBOD"},
+    {"Name": "1U RAID",        "SKU": "ADVER00N0NP16G", "CH": 32,  "MB": 50,   "Slots": 4,  "Price": 3750.0,  "mode": "RAID",   "brand": "American Dynamics"},
+    {"Name": "2U 64 Ch",       "SKU": "ADVER12R0N2H",   "CH": 64,  "MB": 300,  "Slots": 6,  "Price": 10416.7, "mode": "RAID",   "brand": "American Dynamics"},
+    {"Name": "2U 100 Ch",      "SKU": "ADVER00RN2J",    "CH": 100, "MB": 600,  "Slots": 8,  "Price": 11666.7, "mode": "RAID",   "brand": "American Dynamics"},
+    {"Name": "2U 128 Ch",      "SKU": "ADVER72R5N2H",   "CH": 128, "MB": 600,  "Slots": 12, "Price": 25000.0, "mode": "RAID",   "brand": "American Dynamics"},
+    {"Name": "2U Rack 175 Ch", "SKU": "ADVER02RDK",     "CH": 175, "MB": 1000, "Slots": 12, "Price": 13854.2, "mode": "RAID",   "brand": "American Dynamics"},
+    {"Name": "2U Rack 200 Ch", "SKU": "ADVER02RDK",     "CH": 200, "MB": 1500, "Slots": 12, "Price": 12812.5, "mode": "RAID",   "brand": "American Dynamics"},
+    {"Name": "Micro NVR",      "SKU": "ADVEM00N0NP8AH", "CH": 8,   "MB": 80,   "Slots": 1,  "Price": 1500.0,  "mode": "JBOD",   "brand": "American Dynamics"},
+    {"Name": "Desktop JBOD",   "SKU": "ADVED00N0N5H",   "CH": 50,  "MB": 200,  "Slots": 2,  "Price": 2291.7,  "mode": "JBOD",   "brand": "American Dynamics"},
+    {"Name": "2U 75 Ch",       "SKU": "ADVER00N0N2J",   "CH": 75,  "MB": 400,  "Slots": 4,  "Price": 5312.5,  "mode": "JBOD",   "brand": "American Dynamics"},
+    {"Name": "Holis 8 Ch",     "SKU": "HRN-08013P",     "CH": 8,   "MB": 160,  "Slots": 1,  "Price": 520.85,  "mode": "JBOD",   "brand": "Holis"},
+    {"Name": "Holis 16 Ch",    "SKU": "HRN-16023P",     "CH": 16,  "MB": 320,  "Slots": 2,  "Price": 770.85,  "mode": "JBOD",   "brand": "Holis"},
 ]
 
 # ─────────────────────────── Colors & Fonts ────────────────────────────────
@@ -65,7 +65,7 @@ FONT_BTN  = ("Segoe UI", 9, "bold")
 FONT_LRGE = ("Segoe UI", 11, "bold")
 
 # Constants
-MAX_NVR_COMBOS = 6  # Maximum number of NVRs to consider in auto mode
+MAX_NVR_COMBOS = 6
 
 # ─────────────────────────── Core Logic ────────────────────────────────────
 def get_best_hdd(required_tb, slots, parity, price_dict):
@@ -101,11 +101,7 @@ def get_best_hdd(required_tb, slots, parity, price_dict):
 
     else:
         # JBOD mode - can mix different HDD sizes for optimal cost
-        # Get available HDD sizes sorted
         available_sizes = sorted(price_dict.keys())
-
-        # Use dynamic programming to find optimal combination
-        # dp[t] = (min_cost, list_of_drives)
         dp = {0: (0, [])}
 
         for tb in range(1, math.ceil(required_tb) + max(available_sizes)):
@@ -127,7 +123,6 @@ def get_best_hdd(required_tb, slots, parity, price_dict):
             if best_drives:
                 dp[tb] = (best_cost, best_drives)
 
-        # Find the best solution that meets or exceeds requirement
         best_cost = float('inf')
         best_drives = None
 
@@ -139,13 +134,12 @@ def get_best_hdd(required_tb, slots, parity, price_dict):
                     best_drives = drives
 
         if best_drives:
-            # Sort drives for display
             best_drives.sort(reverse=True)
             total_capacity = sum(best_drives)
             return {
-                "cap": best_drives[0],  # Primary cap for display
+                "cap": best_drives[0],
                 "qty": len(best_drives),
-                "data": len(best_drives),  # In JBOD, all drives are data
+                "data": len(best_drives),
                 "cost": best_cost,
                 "mixed": len(set(best_drives)) > 1,
                 "drives": best_drives,
@@ -206,6 +200,7 @@ class CCTVApp:
         self.hdd_ents    = {}
         self.nvr_price_entries = []
         self.progress_window = None
+        self.brand_filter = tk.StringVar(value="All")  # Brand filter: All, American Dynamics, Holis
 
         self.load_all_data()
         self.setup_ui()
@@ -268,7 +263,7 @@ class CCTVApp:
         hdr = mk_frame(self.root, bg=BG)
         hdr.pack(fill="x", padx=24, pady=(18, 0))
         mk_label(hdr, "CCTV Master Calculator", font=FONT_H1, fg=WHITE, bg=BG).pack(side="left")
-        mk_label(hdr, "  v34.2", font=FONT_BODY, fg=TEXT3, bg=BG).pack(side="left", pady=(6, 0))
+        mk_label(hdr, "  v34.3", font=FONT_BODY, fg=TEXT3, bg=BG).pack(side="left", pady=(6, 0))
         sep(self.root).pack(fill="x", padx=24, pady=10)
 
         self.nb = ttk.Notebook(self.root, style="TNotebook")
@@ -396,36 +391,64 @@ class CCTVApp:
         mk_label(ctrl, "Calculation Settings", font=FONT_H2, fg=ACCENT, bg=SURFACE).pack(
             anchor="w", padx=14, pady=(10, 8))
 
-        row = mk_frame(ctrl, bg=SURFACE)
-        row.pack(fill="x", padx=14, pady=(0, 10))
+        # Row 1: Mode and RAID
+        row1 = mk_frame(ctrl, bg=SURFACE)
+        row1.pack(fill="x", padx=14, pady=(0, 10))
 
-        mk_label(row, "Mode:", bg=SURFACE, fg=TEXT2).grid(row=0, column=0, sticky="w", padx=(0, 6))
+        mk_label(row1, "Mode:", bg=SURFACE, fg=TEXT2).pack(side="left", padx=(0, 6))
         self.auto_mode = tk.StringVar(value="AUTO")
-        for val, lbl in (("AUTO", "Auto (find best NVR combo)"), ("MANUAL", "Manual (choose NVR below)")):
-            rb = tk.Radiobutton(row, text=lbl, variable=self.auto_mode, value=val,
-                                bg=SURFACE, fg=TEXT2, selectcolor=SURFACE2,
-                                activebackground=SURFACE, activeforeground=TEXT,
-                                font=FONT_BODY, command=self._on_mode_change)
-            rb.grid(row=0, column=(1 if val=="AUTO" else 2), padx=(0, 16))
+        rb_auto = tk.Radiobutton(row1, text="Auto (find best NVR combo)", variable=self.auto_mode, value="AUTO",
+                                 bg=SURFACE, fg=TEXT2, selectcolor=SURFACE2,
+                                 activebackground=SURFACE, activeforeground=TEXT,
+                                 font=FONT_BODY, command=self._on_mode_change)
+        rb_auto.pack(side="left", padx=(0, 16))
+        
+        rb_manual = tk.Radiobutton(row1, text="Manual (choose NVR below)", variable=self.auto_mode, value="MANUAL",
+                                   bg=SURFACE, fg=TEXT2, selectcolor=SURFACE2,
+                                   activebackground=SURFACE, activeforeground=TEXT,
+                                   font=FONT_BODY, command=self._on_mode_change)
+        rb_manual.pack(side="left", padx=(0, 16))
 
-        mk_label(row, "RAID Level:", bg=SURFACE, fg=TEXT2).grid(row=0, column=3, sticky="w", padx=(16, 6))
+        mk_label(row1, "RAID Level:", bg=SURFACE, fg=TEXT2).pack(side="left", padx=(16, 6))
         self.raid_var = tk.StringVar(value="JBOD")
-        cb_raid = ttk.Combobox(row, textvariable=self.raid_var, width=10,
+        cb_raid = ttk.Combobox(row1, textvariable=self.raid_var, width=10,
                                state="readonly", values=["JBOD", "RAID 5", "RAID 6"])
-        cb_raid.grid(row=0, column=4, padx=(0, 16))
+        cb_raid.pack(side="left")
 
+        # Row 2: Brand filter
+        row2 = mk_frame(ctrl, bg=SURFACE)
+        row2.pack(fill="x", padx=14, pady=(0, 10))
+        
+        mk_label(row2, "NVR Brand:", bg=SURFACE, fg=TEXT2).pack(side="left", padx=(0, 6))
+        brand_combo = ttk.Combobox(row2, textvariable=self.brand_filter, width=20,
+                                   state="readonly", values=["All", "American Dynamics", "Holis"])
+        brand_combo.pack(side="left")
+        mk_label(row2, "(Filters NVRs shown below)", bg=SURFACE, fg=TEXT3, font=FONT_BODY).pack(side="left", padx=(10, 0))
+
+        # Manual NVR selection frame
         self.manual_frame = mk_frame(ctrl, bg=SURFACE)
         self.manual_frame.pack(fill="x", padx=14, pady=(0, 10))
-        mk_label(self.manual_frame, "Manual NVR:", bg=SURFACE, fg=TEXT2).grid(row=0, column=0, padx=(0, 6))
+        
+        manual_inner = mk_frame(self.manual_frame, bg=SURFACE)
+        manual_inner.pack(fill="x", padx=14, pady=5)
+        
+        mk_label(manual_inner, "Manual NVR Selection:", font=FONT_H2, fg=ACCENT, bg=SURFACE).grid(
+            row=0, column=0, columnspan=3, sticky="w", pady=(0, 10))
+        
         self.manual_combos = []
         for i in range(6):
+            mk_label(manual_inner, f"NVR {i+1}:", bg=SURFACE, fg=TEXT2, width=8).grid(
+                row=i+1, column=0, sticky="w", padx=(0, 5), pady=3)
+            
             var = tk.StringVar(value="None")
-            cb  = ttk.Combobox(self.manual_frame, textvariable=var, width=16,
-                               state="readonly", values=["None"])
-            cb.grid(row=0, column=i+1, padx=4)
+            cb = ttk.Combobox(manual_inner, textvariable=var, width=30,
+                             state="readonly", values=["None"])
+            cb.grid(row=i+1, column=1, padx=(0, 10), pady=3, sticky="w")
             self.manual_combos.append(cb)
+        
         self.manual_frame.grid_remove()
 
+        # Buttons row
         btn_row = mk_frame(ctrl, bg=SURFACE)
         btn_row.pack(fill="x", padx=14, pady=(0, 12))
         mk_btn(btn_row, "⚡  Run Calculation", self.run_logic, style="primary").pack(side="left", padx=(0, 10))
@@ -435,6 +458,7 @@ class CCTVApp:
 
         sep(tab).grid(row=0, column=0, sticky="ew", padx=16)
 
+        # Results area
         res_f = mk_frame(tab, bg=SURFACE2)
         res_f.grid(row=1, column=0, sticky="nsew", padx=16, pady=14)
         res_f.columnconfigure(0, weight=1)
@@ -466,13 +490,23 @@ class CCTVApp:
         self._on_mode_change()
 
     def _on_mode_change(self):
+        """Handle switching between AUTO and MANUAL modes"""
         if self.auto_mode.get() == "MANUAL":
+            self.refresh_nvr_dropdowns()
             self.manual_frame.grid()
         else:
             self.manual_frame.grid_remove()
 
     def refresh_nvr_dropdowns(self):
-        names = ["None"] + [n["Name"] for n in self.nvr_list]
+        """Update all manual NVR comboboxes with current NVR list (filtered by brand)"""
+        # Filter NVRs by selected brand
+        brand = self.brand_filter.get()
+        if brand == "All":
+            filtered_nvrs = self.nvr_list
+        else:
+            filtered_nvrs = [n for n in self.nvr_list if n.get("brand", "") == brand]
+        
+        names = ["None"] + [n["Name"] for n in filtered_nvrs]
         for combo in self.manual_combos:
             current = combo.get()
             combo['values'] = names
@@ -516,7 +550,7 @@ class CCTVApp:
         add_f = mk_frame(tab, bg=SURFACE)
         add_f.grid(row=0, column=0, sticky="ew", padx=16, pady=14)
         mk_label(add_f, "Add New NVR Model", font=FONT_H2, fg=ACCENT, bg=SURFACE).grid(
-            row=0, column=0, columnspan=12, sticky="w", padx=14, pady=(10, 8))
+            row=0, column=0, columnspan=13, sticky="w", padx=14, pady=(10, 8))
 
         self.nf = {}
         fields = [("Name", 14), ("SKU", 14), ("CH", 6), ("MB", 6), ("Slots", 6), ("Price", 8)]
@@ -531,8 +565,14 @@ class CCTVApp:
         mk_label(add_f, "RAID/JBOD", bg=SURFACE, fg=TEXT2).grid(row=1, column=12, sticky="w", padx=(6, 3))
         ttk.Combobox(add_f, textvariable=self.na, width=7,
                      state="readonly", values=["RAID", "JBOD"]).grid(row=1, column=13, padx=(0, 6), pady=(0, 10))
+        
+        self.nf_brand = tk.StringVar(value="American Dynamics")
+        mk_label(add_f, "Brand:", bg=SURFACE, fg=TEXT2).grid(row=1, column=14, sticky="w", padx=(6, 3))
+        ttk.Combobox(add_f, textvariable=self.nf_brand, width=15,
+                     state="readonly", values=["American Dynamics", "Holis"]).grid(row=1, column=15, padx=(0, 6), pady=(0, 10))
+        
         mk_btn(add_f, "ADD TO DATABASE", self.add_new_nvr, style="primary").grid(
-            row=1, column=14, padx=(6, 14), pady=(0, 10))
+            row=1, column=16, padx=(6, 14), pady=(0, 10))
 
         sep(tab).grid(row=0, column=0, sticky="ew", padx=16)
 
@@ -559,8 +599,8 @@ class CCTVApp:
 
         hdr = mk_frame(self.nvr_frame, bg=SURFACE3)
         hdr.pack(fill="x", pady=(0, 2))
-        for txt, w in [("Name", 160), ("SKU", 140), ("Channels", 70), ("Max MB/s", 75),
-                       ("HDD Slots", 75), ("Price ($)", 90), ("Mode", 60), ("", 100)]:
+        for txt, w in [("Name", 140), ("SKU", 120), ("Channels", 65), ("Max MB/s", 70),
+                       ("HDD Slots", 70), ("Price ($)", 85), ("Mode", 55), ("Brand", 90), ("", 80)]:
             mk_label(hdr, txt, font=FONT_H3, fg=ACCENT, bg=SURFACE3, width=w//8, anchor="w").pack(
                 side="left", padx=8, pady=6)
 
@@ -577,11 +617,11 @@ class CCTVApp:
             row = mk_frame(self.nvr_frame, bg=row_bg)
             row.pack(fill="x", pady=1)
 
-            mk_label(row, n["Name"],         bg=row_bg, fg=TEXT,  width=20).pack(side="left", padx=(12,4), pady=4)
-            mk_label(row, n["SKU"],          bg=row_bg, fg=TEXT2, font=FONT_MONO, width=16).pack(side="left", padx=4)
-            mk_label(row, str(n["CH"]),      bg=row_bg, fg=TEXT,  width=9,  anchor="center").pack(side="left", padx=4)
-            mk_label(row, str(n["MB"]),      bg=row_bg, fg=TEXT,  width=9,  anchor="center").pack(side="left", padx=4)
-            mk_label(row, str(n["Slots"]),   bg=row_bg, fg=TEXT,  width=9,  anchor="center").pack(side="left", padx=4)
+            mk_label(row, n["Name"],         bg=row_bg, fg=TEXT,  width=18).pack(side="left", padx=(12,4), pady=4)
+            mk_label(row, n["SKU"],          bg=row_bg, fg=TEXT2, font=FONT_MONO, width=14).pack(side="left", padx=4)
+            mk_label(row, str(n["CH"]),      bg=row_bg, fg=TEXT,  width=8,  anchor="center").pack(side="left", padx=4)
+            mk_label(row, str(n["MB"]),      bg=row_bg, fg=TEXT,  width=8,  anchor="center").pack(side="left", padx=4)
+            mk_label(row, str(n["Slots"]),   bg=row_bg, fg=TEXT,  width=8,  anchor="center").pack(side="left", padx=4)
 
             price_var = tk.StringVar(value=f"{n['Price']:.2f}")
             e = mk_entry(row, textvariable=price_var, width=10, bg=row_bg)
@@ -590,6 +630,9 @@ class CCTVApp:
 
             mk_label(row, n.get("mode", "RAID"), bg=row_bg, fg=GOLD if n.get("mode")=="RAID" else ACCENT,
                      width=7, anchor="center").pack(side="left", padx=4)
+            
+            mk_label(row, n.get("brand", "American Dynamics"), bg=row_bg, fg=TEXT2,
+                     width=11, anchor="center").pack(side="left", padx=4)
 
             mk_btn(row, "Delete", lambda idx=i: self.delete_nvr(idx), style="danger").pack(
                 side="right", padx=(4, 12))
@@ -632,6 +675,7 @@ class CCTVApp:
                 "Slots": int(slots_str),
                 "Price": float(price_str),
                 "mode":  self.na.get(),
+                "brand": self.nf_brand.get(),
             }
 
             if row["CH"] <= 0:
@@ -709,16 +753,10 @@ class CCTVApp:
 
     # ── Calculation engine ────────────────────────────────────────────────
     def calculate_engine(self, cams, hw_cfg, split_ratio=None):
-        """
-        cams: list of camera row values [name, count, mbps, tb]
-        hw_cfg: list of NVR dicts (one per unit, can repeat)
-        split_ratio: how to distribute cameras across units (None for even distribution)
-        """
         n_units = len(hw_cfg)
         u_list = []
         cur_c = 0
 
-        # Flatten cameras by individual units
         flat_cams = []
         for cam in cams:
             cam_name = cam[0]
@@ -730,7 +768,6 @@ class CCTVApp:
 
         total_cameras = len(flat_cams)
 
-        # For each NVR, calculate its share
         for i, hw in enumerate(hw_cfg):
             if split_ratio is None:
                 remaining_units = n_units - i
@@ -743,36 +780,29 @@ class CCTVApp:
             u_brk = flat_cams[cur_c:cur_c + take]
             cur_c += take
 
-            # Calculate totals for this NVR
             u_mb = sum(c[2] for c in u_brk)
             u_tb = sum(c[3] for c in u_brk)
             u_c = len(u_brk)
 
-            # Check channel capacity
             if u_c > hw["CH"]:
                 return None
 
-            # Check bandwidth capacity (convert MB to Mbps: 1 MB/s = 8 Mbps)
             u_mb_per_sec = u_mb / 8
             if u_mb_per_sec > hw["MB"]:
                 return None
 
-            # Get RAID mode
             raid = self.raid_var.get()
             parity = 0 if raid == "JBOD" else (1 if raid == "RAID 5" else 2)
             mode_str = raid
 
-            # Get best HDD configuration (now supports mixed sizes for JBOD)
             hd = get_best_hdd(u_tb, hw["Slots"], parity, self.hdd_prices)
             if hd is None:
                 return None
 
-            # Count cameras by type for display
             cam_breakdown = {}
             for c in u_brk:
                 cam_breakdown[c[0]] = cam_breakdown.get(c[0], 0) + 1
 
-            # Format drive string for display
             if hd.get("mixed", False):
                 drive_str = " + ".join([f"{d}TB" for d in hd["drives"]])
                 total_cap = hd.get("total_capacity", hd["qty"] * hd["cap"])
@@ -799,20 +829,17 @@ class CCTVApp:
                 "is_mixed": hd.get("mixed", False)
             })
 
-        # Verify all cameras were assigned
         if cur_c < total_cameras:
             return None
 
         return u_list
 
     def run_logic(self):
-        """Auto-mode that properly evaluates multi-NVR configurations"""
         cams = [self.tree.item(i)["values"] for i in self.tree.get_children()]
         if not cams:
             messagebox.showwarning("Warning", "Add cameras first.")
             return
 
-        # Validate camera data
         for cam in cams:
             try:
                 if not cam[0].strip():
@@ -832,38 +859,44 @@ class CCTVApp:
 
         try:
             if self.auto_mode.get() == "AUTO":
-                # Filter NVRs by RAID compatibility
-                pool = [n for n in self.nvr_list if (
+                # Filter by brand
+                brand = self.brand_filter.get()
+                if brand == "All":
+                    pool = [n for n in self.nvr_list]
+                else:
+                    pool = [n for n in self.nvr_list if n.get("brand", "") == brand]
+                
+                # Further filter by RAID compatibility
+                pool = [n for n in pool if (
                     n.get("mode", "RAID") == "JBOD" and self.raid_var.get() == "JBOD" or
                     n.get("mode", "RAID") == "RAID" and self.raid_var.get() != "JBOD"
                 )]
+                
                 if not pool:
-                    pool = list(self.nvr_list)
+                    pool = [n for n in self.nvr_list if (
+                        n.get("mode", "RAID") == "JBOD" and self.raid_var.get() == "JBOD" or
+                        n.get("mode", "RAID") == "RAID" and self.raid_var.get() != "JBOD"
+                    )]
 
-                # Sort pool by price for better optimization
                 pool.sort(key=lambda x: x["Price"])
 
                 total_cams = sum(int(c[1]) for c in cams)
-                total_storage = sum(int(c[1]) * float(c[3]) for c in cams)
                 total_bandwidth = sum(int(c[1]) * float(c[2]) for c in cams)
 
                 best_cfg, best_cost = None, float("inf")
 
-                # Try different numbers of NVRs (1 to 6)
-                for n_u in range(1, 9):
+                for n_u in range(1, 7):
                     for combo in itertools.combinations_with_replacement(pool, n_u):
                         hw_c = list(combo)
 
-                        # Quick feasibility checks
                         max_ch = sum(n["CH"] for n in hw_c)
                         if max_ch < total_cams:
                             continue
 
                         max_bandwidth = sum(n["MB"] for n in hw_c)
-                        if max_bandwidth < (total_bandwidth / 8):  # Convert Mbps to MB/s
+                        if max_bandwidth < (total_bandwidth / 8):
                             continue
 
-                        # Calculate configuration
                         res = self.calculate_engine(cams, hw_c, None)
                         if res:
                             cost = sum(x["cost"] for x in res)
@@ -874,11 +907,10 @@ class CCTVApp:
                 txt = best_cfg
 
             else:
-                # Manual mode
                 active_hw = []
                 for combo in self.manual_combos:
                     nvr_name = combo.get()
-                    if nvr_name != "None":
+                    if nvr_name != "None" and nvr_name:
                         nvr = next((n for n in self.nvr_list if n["Name"] == nvr_name), None)
                         if nvr:
                             active_hw.append(nvr)
@@ -972,21 +1004,16 @@ class CCTVApp:
 
     # ── Excel Export Function with xlwings ─────────────────────────────────
     def export_to_excel(self):
-        """Export calculation results to Excel template using xlwings (preserves all formatting)"""
-
-        # Check if we have calculation results
         if not self.last_calculation_result:
             messagebox.showwarning("Warning", "Run a calculation first before exporting!")
             return
 
-        # Check if xlwings is available
         if not EXCEL_AVAILABLE:
             messagebox.showerror("Error",
                 "Excel export requires xlwings library.\n\n"
                 "Please install it using:\npip install xlwings")
             return
 
-        # Ask for template file location
         template_file = filedialog.askopenfilename(
             title="Select Excel Template",
             filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
@@ -996,7 +1023,6 @@ class CCTVApp:
         if not template_file:
             return
 
-        # Ask user if they want to save as a new file or overwrite
         save_option = messagebox.askyesno(
             "Save Option",
             "Do you want to save as a new file?\n\n"
@@ -1006,7 +1032,6 @@ class CCTVApp:
 
         output_file = template_file
         if save_option:
-            # Ask for new file location
             output_file = filedialog.asksaveasfilename(
                 title="Save Excel File As",
                 defaultextension=".xlsx",
@@ -1016,7 +1041,6 @@ class CCTVApp:
             if not output_file:
                 return
 
-        # Show progress
         progress_msg = tk.Toplevel(self.root)
         progress_msg.title("Exporting...")
         progress_msg.configure(bg=SURFACE)
@@ -1032,18 +1056,13 @@ class CCTVApp:
                 font=FONT_H2, fg=ACCENT, bg=SURFACE).pack(pady=(20, 10))
         self.root.update()
 
-        # Initialize xlwings app (Excel in background)
         app = None
         wb = None
 
         try:
-            # Open Excel invisibly
             app = xw.App(visible=False, add_book=False)
-
-            # Open the template
             wb = app.books.open(template_file)
 
-            # Find the offer sheet (case-insensitive)
             sheet_name = None
             for name in wb.sheet_names:
                 if name.lower() == "offer":
@@ -1055,11 +1074,9 @@ class CCTVApp:
 
             ws = wb.sheets[sheet_name]
 
-            # Prepare data
             cameras = self.last_calculation_result["cameras"]
             nvr_config = self.last_calculation_result["nvr_config"]
 
-            # Group NVRs by SKU and HDD config
             nvr_groups = {}
             for unit in nvr_config:
                 sku = unit["m"]["SKU"]
@@ -1078,73 +1095,46 @@ class CCTVApp:
                 else:
                     nvr_groups[key]["count"] += 1
 
-            # Prepare data rows
             excel_rows = []
 
-            # Add Camera Header
             excel_rows.append(("", "", "", "", "", "header", "Cameras"))
 
-            # Add each camera type and its CAMLIC
             for cam in cameras:
                 cam_name = cam[0]
                 cam_qty = int(cam[1])
 
-                # Camera row
                 excel_rows.append((cam_name, cam_qty, "", "CCTV", "Camera", "data", ""))
-                # CAMLIC row (immediately after each camera)
                 excel_rows.append(("CAMLIC", 1, "ch", "CCTV", "Software", "data", ""))
 
-            # Add NVRs Header
             excel_rows.append(("", "", "", "", "", "header", "NVRs"))
 
-            # Add NVR groups and their HDDs
             for key, group in nvr_groups.items():
-                # NVR row
                 excel_rows.append((group["sku"], group["count"], "", "CCTV", "NVR", "data", ""))
-                # HDD row for this NVR
                 hdd_part_no = f"{group['hdd_cap']}TB HDD"
                 excel_rows.append((hdd_part_no, group["hdd_qty"], "ch", "CCTV", "HDD", "data", ""))
 
-            # Add VMS Header
             excel_rows.append(("", "", "", "", "", "header", "VMS"))
-
-            # Add VMS row (Sys is blank, not "ch")
             excel_rows.append(("VMS", 1, "", "CCTV", "Software", "data", ""))
 
-            # Write to Excel
             current_row = 9
 
-            # Clear existing data from row 9 downward
             last_row = ws.used_range.last_cell.row
             if last_row >= current_row:
                 for row in range(current_row, last_row + 1):
-                    ws.range(f"F{row}").value = None
-                    ws.range(f"G{row}").value = None
-                    ws.range(f"H{row}").value = None
-                    ws.range(f"K{row}").value = None
-                    ws.range(f"L{row}").value = None
-                    ws.range(f"M{row}").value = None
+                    ws.range(f"A{row}:U{row}").value = None
 
-            # Write new data
             for row_data in excel_rows:
                 part_no, qty, sys, solution, category, row_type, header_text = row_data
 
                 if row_type == "header":
-                    # Clear the row first
-                    ws.range(f"F{current_row}:M{current_row}").value = None
-                    # Put header text in column G
+                    ws.range(f"A{current_row}:U{current_row}").value = None
                     if header_text:
                         ws.range(f"G{current_row}").value = header_text
-                    # Apply CG - Header 1 style
                     try:
-                        ws.range(f"F{current_row}:M{current_row}").api.Style = "CG - Header 1"
+                        ws.range(f"A{current_row}:M{current_row}").api.Style = "CG - Header 1"
                     except Exception:
-                        try:
-                            ws.range(f"G{current_row}").api.Style = "CG - Header 1"
-                        except Exception as e:
-                            print(f"Warning: Could not apply 'CG - Header 1' style: {e}")
+                        pass
                 else:
-                    # Data rows - write normally
                     if part_no:
                         ws.range(f"F{current_row}").value = part_no
                     if qty:
@@ -1158,7 +1148,6 @@ class CCTVApp:
 
                 current_row += 1
 
-            # Save the file
             if save_option:
                 wb.save(output_file)
             else:
