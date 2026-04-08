@@ -333,16 +333,16 @@ class CCTVApp:
             count = self.ents["Count"].get().strip()
             if not count:
                 raise ValueError("Count cannot be empty")
-            Mbps = self.ents["Mbps/cam"].get().strip()
-            if not Mbps:
+            mbps = self.ents["Mbps/cam"].get().strip()
+            if not mbps:
                 raise ValueError("Mbps/cam cannot be empty")
             storage = self.ents["Storage TB/cam"].get().strip()
             if not storage:
                 raise ValueError("Storage TB/cam cannot be empty")
-            float(count); float(Mbps); float(storage)
+            float(count); float(mbps); float(storage)
             if float(count) <= 0:
                 raise ValueError("Count must be positive")
-            if float(Mbps) <= 0:
+            if float(mbps) <= 0:
                 raise ValueError("Mbps/cam must be positive")
             if float(storage) <= 0:
                 raise ValueError("Storage TB/cam must be positive")
@@ -354,7 +354,7 @@ class CCTVApp:
         if sel:
             self.tree.delete(sel[0])
         tag = "even" if len(self.tree.get_children()) % 2 == 0 else "odd"
-        self.tree.insert("", "end", values=(name, count, Mbps, storage), tags=(tag,))
+        self.tree.insert("", "end", values=(name, count, mbps, storage), tags=(tag,))
         self.refresh_nvr_dropdowns()
 
     def delete_camera(self):
@@ -378,7 +378,7 @@ class CCTVApp:
 
         mk_label(row1, "Mode:", bg=SURFACE, fg=TEXT2).pack(side="left", padx=(0, 6))
         self.auto_mode = tk.StringVar(value="AUTO")
-        rb_auto = tk.Radiobutton(row1, text="Auto (find best NVR coMbo)", variable=self.auto_mode, value="AUTO",
+        rb_auto = tk.Radiobutton(row1, text="Auto (find best NVR combo)", variable=self.auto_mode, value="AUTO",
                                  bg=SURFACE, fg=TEXT2, selectcolor=SURFACE2,
                                  activebackground=SURFACE, activeforeground=TEXT,
                                  font=FONT_BODY, command=self._on_mode_change)
@@ -409,7 +409,7 @@ class CCTVApp:
         self.manual_frame.pack(fill="x", padx=14, pady=(0, 10))
         manual_label = mk_label(self.manual_frame, "Manual NVR Selection:", font=FONT_H2, fg=ACCENT, bg=SURFACE)
         manual_label.pack(anchor="w", pady=(0, 10))
-        self.manual_coMbos = []
+        self.manual_combos = []
         for i in range(6):
             row_frame = mk_frame(self.manual_frame, bg=SURFACE)
             row_frame.pack(fill="x", pady=2)
@@ -418,7 +418,7 @@ class CCTVApp:
             cb = ttk.Combobox(row_frame, textvariable=var, width=30,
                              state="readonly", values=["None"])
             cb.pack(side="left", padx=(0, 10))
-            self.manual_coMbos.append(cb)
+            self.manual_combos.append(cb)
         self.manual_frame.pack_forget()
 
         btn_row = mk_frame(ctrl, bg=SURFACE)
@@ -474,11 +474,11 @@ class CCTVApp:
         else:
             filtered_nvrs = [n for n in self.nvr_list if n.get("brand", "") == brand]
         names = ["None"] + [n["Name"] for n in filtered_nvrs]
-        for coMbo in self.manual_coMbos:
-            current = coMbo.get()
-            coMbo['values'] = names
+        for combo in self.manual_combos:
+            current = combo.get()
+            combo['values'] = names
             if current not in names:
-                coMbo.set("None")
+                combo.set("None")
 
     def show_progress(self):
         if self.progress_window and self.progress_window.winfo_exists():
@@ -611,8 +611,8 @@ class CCTVApp:
             ch_str = self.nf["CH"].get().strip()
             if not ch_str:
                 raise ValueError("Channels required")
-            Mb_str = self.nf["Mb"].get().strip()
-            if not Mb_str:
+            mb_str = self.nf["Mb"].get().strip()
+            if not mb_str:
                 raise ValueError("Max Mbps required")
             slots_str = self.nf["Slots"].get().strip()
             if not slots_str:
@@ -622,7 +622,7 @@ class CCTVApp:
                 raise ValueError("Price required")
 
             row = {
-                "Name": name, "SKU": sku, "CH": int(ch_str), "Mb": int(Mb_str),
+                "Name": name, "SKU": sku, "CH": int(ch_str), "Mb": int(mb_str),
                 "Slots": int(slots_str), "Price": float(price_str),
                 "mode": self.na.get(), "brand": self.nf_brand.get(),
             }
@@ -707,11 +707,11 @@ class CCTVApp:
             try:
                 name = row[0].strip()
                 count = int(row[1])
-                Mbps = float(row[2])
+                mbps = float(row[2])
                 storage = float(row[3])
-                if not name or count <= 0 or Mbps <= 0 or storage <= 0:
+                if not name or count <= 0 or mbps <= 0 or storage <= 0:
                     raise ValueError("Invalid camera data")
-                cameras.append((name, count, Mbps, storage))
+                cameras.append((name, count, mbps, storage))
             except (ValueError, IndexError) as e:
                 messagebox.showerror("Error", f"Invalid camera data: {e}")
                 return
@@ -775,10 +775,10 @@ class CCTVApp:
         best_result = None
         best_cost = float('inf')
 
-        # Try different nuMbers of NVRs (1 to 4)
+        # Try different numbers of NVRs (1 to 4)
         for nvr_count in range(1, min(5, len(compatible_nvrs) + 2)):
-            for coMbo in itertools.coMbinations_with_replacement(compatible_nvrs, nvr_count):
-                nvr_list = list(coMbo)
+            for combo in itertools.combinations_with_replacement(compatible_nvrs, nvr_count):
+                nvr_list = list(combo)
                 
                 # Try different HDD size strategies
                 result = self.distribute_cameras_intelligent(cameras, nvr_list)
@@ -792,8 +792,8 @@ class CCTVApp:
 
     def manual_calculate(self, cameras):
         selected_nvrs = []
-        for coMbo in self.manual_coMbos:
-            nvr_name = coMbo.get()
+        for combo in self.manual_combos:
+            nvr_name = combo.get()
             if nvr_name != "None" and nvr_name:
                 nvr = next((n for n in self.nvr_list if n["Name"] == nvr_name), None)
                 if nvr:
@@ -807,9 +807,9 @@ class CCTVApp:
         """Intelligent distribution considering both bandwidth and storage constraints"""
         # Flatten cameras
         flat_cams = []
-        for name, count, Mbps, storage in cameras:
+        for name, count, mbps, storage in cameras:
             for _ in range(count):
-                flat_cams.append((name, Mbps, storage))
+                flat_cams.append((name, mbps, storage))
         
         total_cams = len(flat_cams)
         total_bandwidth = sum(c[1] for c in flat_cams)
@@ -920,7 +920,7 @@ class CCTVApp:
 
     def try_distribution(self, flat_cams, nvrs, target_cams):
         """Try a specific camera distribution"""
-        # Adjust target_cams to ensure total equals nuMber of cameras
+        # Adjust target_cams to ensure total equals number of cameras
         total_target = sum(target_cams)
         total_cams = len(flat_cams)
         
@@ -983,11 +983,11 @@ class CCTVApp:
             write(f"  Load:     ", "label")
             
             # Both values are in Mbps
-            Mbps_total = u["total_bandwidth"]
-            Mbps_capacity = nvr["Mb"]
-            load_pct = (Mbps_total / Mbps_capacity * 100) if Mbps_capacity > 0 else 0
+            mbps_total = u["total_bandwidth"]
+            mbps_capacity = nvr["Mb"]
+            load_pct = (mbps_total / mbps_capacity * 100) if mbps_capacity > 0 else 0
             
-            write(f"{Mbps_total:.1f} Mbps  ({load_pct:.1f}% of {nvr['Mb']} Mbps capacity)\n", "value")
+            write(f"{mbps_total:.1f} Mbps  ({load_pct:.1f}% of {nvr['Mb']} Mbps capacity)\n", "value")
             
             write(f"  Cameras:  ", "label")
             write(f"{u['camera_count']} total  ", "value")
