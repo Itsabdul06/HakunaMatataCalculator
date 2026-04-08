@@ -756,7 +756,7 @@ class CCTVApp:
             available_nvrs = self.nvr_list.copy()
         else:
             available_nvrs = [n for n in self.nvr_list if n.get("brand", "") == brand]
-
+    
         raid_mode = self.raid_var.get()
         compatible_nvrs = []
         for nvr in available_nvrs:
@@ -765,31 +765,42 @@ class CCTVApp:
                 compatible_nvrs.append(nvr)
             elif raid_mode != "JBOD" and nvr_mode == "RAID":
                 compatible_nvrs.append(nvr)
-
+    
         if not compatible_nvrs:
             compatible_nvrs = available_nvrs
-
-        # Sort by price (cheapest first)
-        compatible_nvrs.sort(key=lambda x: x["Price"])
-
+    
+        # Calculate totals
+        total_cameras = sum(c[1] for c in cameras)
+        total_bandwidth = sum(c[1] * c[2] for c in cameras)
+        total_storage = sum(c[1] * c[3] for c in cameras)
+    
         best_result = None
         best_cost = float('inf')
-
+    
         # Try different numbers of NVRs (1 to 4)
         for nvr_count in range(1, min(5, len(compatible_nvrs) + 2)):
+            # Try all combinations
             for combo in itertools.combinations_with_replacement(compatible_nvrs, nvr_count):
                 nvr_list = list(combo)
                 
-                # Try different HDD size strategies
+                # Quick feasibility checks
+                total_channels = sum(n["CH"] for n in nvr_list)
+                if total_channels < total_cameras:
+                    continue
+                
+                total_bandwidth_cap = sum(n["MB"] for n in nvr_list)
+                if total_bandwidth_cap < total_bandwidth:
+                    continue
+                
+                # Try distribution
                 result = self.distribute_cameras_intelligent(cameras, nvr_list)
                 if result:
                     total = sum(u["cost"] for u in result)
                     if total < best_cost:
                         best_cost = total
                         best_result = result
-
+    
         return best_result
-
     def manual_calculate(self, cameras):
         selected_nvrs = []
         for combo in self.manual_combos:
@@ -812,109 +823,60 @@ class CCTVApp:
                 flat_cams.append((name, mbps, storage))
         
         total_cams = len(flat_cams)
-        total_bandwidth = sum(c[1] for c in flat_cams)
-        total_storage = sum(c[2] for c in flat_cams)
-        n_nvrs = len(nvrs)
         
-        # Calculate max bandwidth and max storage for each NVR (using largest HDD)
-        max_hdd = max(self.hdd_prices.keys())
+        # Sort NVRs: put low-bandwidth NVRs first (they are the bottleneck)
+        nvrs_with_index = list(enumerate(nvrs))
+        nvrs_with_index.sort(key=lambda x: x[1]["MB"])
         
-        nvr_bandwidths = [nvr["Mb"] for nvr in nvrs]
-        nvr_channels = [nvr["CH"] for nvr in nvrs]
-        nvr_slots = [nvr["Slots"] for nvr in nvrs]
-        
-        # Try different distribution strategies
         best_result = None
         best_cost = float('inf')
         
-        # Strategy 1: Distribute by bandwidth proportion
-        total_bw_cap = sum(nvr_bandwidths)
-        if total_bw_cap > 0:
-            target_cams = []
-            remaining = total_cams
-            
-            for i in range(n_nvrs - 1):
-                # Calculate target based on bandwidth proportion
-                proportion = nvr_bandwidths[i] / total_bw_cap
-                target = int(round(total_cams * proportion))
-                # Respect channel limit
-                target = min(target, nvr_channels[i])
-                # Ensure at least 1 camera and not too many
-                target = max(1, min(target, remaining - (n_nvrs - i - 1)))
-                target_cams.append(target)
-                remaining -= target
-            
-            target_cams.append(min(remaining, nvr_channels[-1]))
-            
-            result = self.try_distribution(flat_cams, nvrs, target_cams)
-            if result:
-                total = sum(u["cost"] for u in result)
-                if total < best_cost:
-                    best_cost = total
-                    best_result = result
+        # Try different allocations for the smallest bandwidth NVR
+        # For a 50 Mbps NVR, it can handle at most 16 cameras (50 / 3.12 ≈ 16)
+        # But we need to try different numbers
+        small_nvr_idx = nvrs_with_index[0][0]
+        small_nvr = nvrs_with_index[0][1]
         
-        # Strategy 2: Distribute by storage proportion
-        total_storage_cap = sum(nvr_slots) * max_hdd
-        if total_storage_cap > 0:
-            target_cams = []
-            remaining = total_cams
+        # Calculate max cameras for small NVR based on its bandwidth
+        # Use the lowest Mbps camera for worst-case, or average
+        avg_mbps = sum(c[1] for c in flat_cams) / total_cams if total_cams > 0 else 3.12
+        max_for_small = min(int(small_nvr["MB"] / avg_mbps), small_nvr["CH"], total_cams)
+        
+        # Try from max down to 1 camera on the small NVR
+        for small_cam_count in range(max_for_small, 0, -1):
+            target_cams = [0] * len(nvrs)
+            target_cams[small_nvr_idx] = small_cam_count
             
-            for i in range(n_nvrs - 1):
-                proportion = (nvr_slots[i] * max_hdd) / total_storage_cap
-                target = int(round(total_cams * proportion))
-                target = min(target, nvr_channels[i])
-                target = max(1, min(target, remaining - (n_nvrs - i - 1)))
-                target_cams.append(target)
-                remaining -= target
+            # Distribute remaining cameras to other NVRs
+            remaining = total_cams - small_cam_count
+            other_nvrs = nvrs_with_index[1:]  # NVRs except the smallest
             
-            target_cams.append(min(remaining, nvr_channels[-1]))
+            for orig_idx, nvr in other_nvrs:
+                if remaining <= 0:
+                    break
+                
+                # Calculate max for this NVR
+                max_for_nvr = min(nvr["CH"], remaining)
+                # Respect bandwidth (estimate based on remaining cameras)
+                if remaining > 0:
+                    remaining_avg_mbps = sum(c[1] for c in flat_cams[small_cam_count:]) / remaining
+                    max_by_bw = int(nvr["MB"] / remaining_avg_mbps) if remaining_avg_mbps > 0 else nvr["CH"]
+                    max_for_nvr = min(max_for_nvr, max_by_bw)
+                
+                # Give as many as possible to larger NVRs
+                take = min(max_for_nvr, remaining)
+                target_cams[orig_idx] = take
+                remaining -= take
             
-            result = self.try_distribution(flat_cams, nvrs, target_cams)
-            if result:
-                total = sum(u["cost"] for u in result)
-                if total < best_cost:
-                    best_cost = total
-                    best_result = result
-        
-        # Strategy 3: Even distribution
-        base = total_cams // n_nvrs
-        remainder = total_cams % n_nvrs
-        target_cams = [base + (1 if i < remainder else 0) for i in range(n_nvrs)]
-        # Respect channel limits
-        for i in range(n_nvrs):
-            target_cams[i] = min(target_cams[i], nvr_channels[i])
-        
-        result = self.try_distribution(flat_cams, nvrs, target_cams)
-        if result:
-            total = sum(u["cost"] for u in result)
-            if total < best_cost:
-                best_cost = total
-                best_result = result
-        
-        # Strategy 4: Try to put as many cameras as possible on the cheapest NVR per camera
-        # Sort NVRs by price per channel (cheapest first)
-        nvrs_sorted = sorted(enumerate(nvrs), key=lambda x: x[1]["Price"] / x[1]["CH"] if x[1]["CH"] > 0 else float('inf'))
-        target_cams = [0] * n_nvrs
-        remaining = total_cams
-        
-        for idx, nvr in nvrs_sorted:
-            if remaining <= 0:
-                break
-            max_for_nvr = min(nvr["CH"], remaining)
-            # Calculate bandwidth limit
-            avg_bandwidth = total_bandwidth / total_cams
-            max_by_bw = int(nvr["Mb"] / avg_bandwidth) if avg_bandwidth > 0 else nvr["CH"]
-            max_for_nvr = min(max_for_nvr, max_by_bw)
-            take = min(max_for_nvr, remaining)
-            target_cams[idx] = take
-            remaining -= take
-        
-        result = self.try_distribution(flat_cams, nvrs, target_cams)
-        if result:
-            total = sum(u["cost"] for u in result)
-            if total < best_cost:
-                best_cost = total
-                best_result = result
+            # If we distributed all cameras, try this configuration
+            if remaining == 0:
+                # Adjust to ensure all cameras are taken
+                result = self.try_distribution(flat_cams, nvrs, target_cams)
+                if result:
+                    total = sum(u["cost"] for u in result)
+                    if total < best_cost:
+                        best_cost = total
+                        best_result = result
         
         return best_result
 
