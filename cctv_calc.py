@@ -788,7 +788,7 @@ class CCTVApp:
                 if total_channels < total_cameras:
                     continue
                 
-                total_bandwidth_cap = sum(n["MB"] for n in nvr_list)
+                total_bandwidth_cap = sum(n["Mb"] for n in nvr_list)
                 if total_bandwidth_cap < total_bandwidth:
                     continue
                 
@@ -826,7 +826,7 @@ class CCTVApp:
         
         # Sort NVRs: put low-bandwidth NVRs first (they are the bottleneck)
         nvrs_with_index = list(enumerate(nvrs))
-        nvrs_with_index.sort(key=lambda x: x[1]["MB"])
+        nvrs_with_index.sort(key=lambda x: x[1]["Mb"])
         
         best_result = None
         best_cost = float('inf')
@@ -840,7 +840,7 @@ class CCTVApp:
         # Calculate max cameras for small NVR based on its bandwidth
         # Use the lowest Mbps camera for worst-case, or average
         avg_mbps = sum(c[1] for c in flat_cams) / total_cams if total_cams > 0 else 3.12
-        max_for_small = min(int(small_nvr["MB"] / avg_mbps), small_nvr["CH"], total_cams)
+        max_for_small = min(int(small_nvr["Mb"] / avg_mbps), small_nvr["CH"], total_cams)
         
         # Try from max down to 1 camera on the small NVR
         for small_cam_count in range(max_for_small, 0, -1):
@@ -860,7 +860,7 @@ class CCTVApp:
                 # Respect bandwidth (estimate based on remaining cameras)
                 if remaining > 0:
                     remaining_avg_mbps = sum(c[1] for c in flat_cams[small_cam_count:]) / remaining
-                    max_by_bw = int(nvr["MB"] / remaining_avg_mbps) if remaining_avg_mbps > 0 else nvr["CH"]
+                    max_by_bw = int(nvr["Mb"] / remaining_avg_mbps) if remaining_avg_mbps > 0 else nvr["CH"]
                     max_for_nvr = min(max_for_nvr, max_by_bw)
                 
                 # Give as many as possible to larger NVRs
