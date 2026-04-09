@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
 CCTV Master Calculator
+Rewrite of KantechCalc with improved GUI.
+Maintains all original functionality: camera entry, NVR management,
+HDD pricing, auto/manual calculation, report export to Excel.
 """
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
@@ -266,6 +269,17 @@ def load_camera_database():
         print(f"Error parsing Cameras_JSON.json: {e}")
         return {}
 
+def save_camera_database(db):
+    """Save camera database to JSON file"""
+    try:
+        json_path = os.path.join(get_resource_path(), "Cameras_JSON.json")
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(db, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception as e:
+        print(f"Error saving camera database: {e}")
+        return False
+
 # Calculate storage in TB per camera
 def calculate_storage_tb(mbps, days):
     """Calculate storage in TB per camera for given Mbps and retention days"""
@@ -315,7 +329,7 @@ def sep(parent, bg=BORDER, vertical=False):
 class CCTVApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("CCTV Master Calculator by Saher & Abdelrahman")
+        self.root.title("CCTV Master Calculator")
         self.root.configure(bg=BG)
         self.root.geometry("1200x820")
         self.root.minsize(1000, 700)
@@ -323,7 +337,7 @@ class CCTVApp:
         self.last_report = None
         self.last_calculation_result = None
         self.hdd_ents = {}
-        self.nvr_price_entries = []
+        self.nvr_price_vars = {}
         self.progress_window = None
         self.brand_filter = tk.StringVar(value="All")
         
@@ -338,6 +352,9 @@ class CCTVApp:
         self.retention_days = tk.StringVar(value="30")
         self.calculated_mbps = tk.StringVar(value="0.00")
         self.calculated_storage = tk.StringVar(value="0.00")
+        
+        # Custom camera variables
+        self.custom_vars = {}
         
         # Bind trace to update Mbps and Storage when selections change
         self.selected_camera.trace('w', self.update_codec_dropdown)
@@ -423,7 +440,7 @@ class CCTVApp:
         self._build_nvr_tab(self.tabs[2])
         self._build_hdd_tab(self.tabs[3])
 
-    # ── Tab 1: Cameras (Updated with JSON integration) ────────────────────
+    # ── Tab 1: Cameras (Database + Manual Entry) ────────────────────────────
     def populate_camera_dropdown(self):
         """Populate camera dropdown with names from database"""
         camera_names = sorted(self.camera_db.keys())
@@ -472,8 +489,6 @@ class CCTVApp:
         if camera_name and camera_name in self.camera_db and codec and fps:
             mbps = self.camera_db[camera_name].get("throughputs", {}).get(codec, {}).get(fps, 0)
             self.calculated_mbps.set(f"{mbps:.2f}")
-            
-            # Update storage
             self.update_storage_only()
         else:
             self.calculated_mbps.set("0.00")
@@ -521,68 +536,183 @@ class CCTVApp:
         except ValueError as e:
             messagebox.showerror("Error", f"Invalid input: {e}")
     
+    def add_custom_camera(self):
+        """Add a manually entered camera to the tree"""
+        try:
+            name = self.custom_vars["custom_name"].get().strip()
+            if not name:
+                raise ValueError("Camera name is required")
+            
+            sku = self.custom_vars["custom_sku"].get().strip()
+            if not sku:
+                sku = name
+            
+            brand = self.custom_vars["custom_brand"].get().strip()
+            if not brand:
+                brand = "Custom"
+            
+            mbps_str = self.custom_vars["custom_mbps"].get().strip()
+            if not mbps_str:
+                raise ValueError("Mbps is required")
+            mbps = float(mbps_str)
+            if mbps <= 0:
+                raise ValueError("Mbps must be positive")
+            
+            storage_str = self.custom_vars["custom_storage"].get().strip()
+            if not storage_str:
+                raise ValueError("Storage TB/cam is required")
+            storage = float(storage_str)
+            if storage <= 0:
+                raise ValueError("Storage must be positive")
+            
+            quantity_str = self.custom_vars["custom_quantity"].get().strip()
+            if not quantity_str:
+                raise ValueError("Quantity is required")
+            quantity = int(quantity_str)
+            if quantity <= 0:
+                raise ValueError("Quantity must be positive")
+            
+            # Add to tree
+            tag = "even" if len(self.tree.get_children()) % 2 == 0 else "odd"
+            self.tree.insert("", "end", values=(name, quantity, f"{mbps:.2f}", f"{storage:.2f}"), tags=(tag,))
+            
+            # Optionally add to database
+            if self.add_to_database.get():
+                if name not in self.camera_db:
+                    self.camera_db[name] = {
+                        "sku": sku,
+                        "brand": brand,
+                        "resolution": "Custom",
+                        "throughputs": {
+                            "Custom": {
+                                "1fps": mbps
+                            }
+                        }
+                    }
+                    save_camera_database(self.camera_db)
+                    self.populate_camera_dropdown()
+                    messagebox.showinfo("Success", f"Camera '{name}' added to database.")
+                else:
+                    messagebox.showwarning("Warning", f"Camera '{name}' already exists in database. Not added.")
+            
+            # Clear custom fields
+            for key in self.custom_vars:
+                self.custom_vars[key].set("")
+            self.add_to_database.set(False)
+            
+            self.refresh_nvr_dropdowns()
+            
+        except ValueError as e:
+            messagebox.showerror("Error", f"Invalid input: {e}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to add camera: {e}")
+    
     def _build_cameras_tab(self, tab):
         tab.columnconfigure(0, weight=1)
-        tab.rowconfigure(1, weight=1)
+        tab.rowconfigure(4, weight=1)
 
-        # Input panel
-        inp = mk_frame(tab, bg=SURFACE)
-        inp.grid(row=0, column=0, sticky="ew", padx=16, pady=14)
+        # ─────────────────────────────────────────────────────────────────────
+        # SECTION 1: Add Camera from Database
+        # ─────────────────────────────────────────────────────────────────────
+        db_frame = mk_frame(tab, bg=SURFACE)
+        db_frame.grid(row=0, column=0, sticky="ew", padx=16, pady=(14, 5))
 
-        mk_label(inp, "Add Camera from Database", font=FONT_H2, fg=ACCENT, bg=SURFACE).grid(
+        mk_label(db_frame, "Add Camera from Database", font=FONT_H2, fg=ACCENT, bg=SURFACE).grid(
             row=0, column=0, columnspan=10, sticky="w", padx=14, pady=(10, 8))
 
         # Row 1: Camera Model
-        mk_label(inp, "Camera Model:", bg=SURFACE, fg=TEXT2).grid(row=1, column=0, sticky="w", padx=(14, 5), pady=5)
-        self.camera_dropdown = ttk.Combobox(inp, textvariable=self.selected_camera, width=50, state="readonly")
+        mk_label(db_frame, "Camera Model:", bg=SURFACE, fg=TEXT2).grid(row=1, column=0, sticky="w", padx=(14, 5), pady=5)
+        self.camera_dropdown = ttk.Combobox(db_frame, textvariable=self.selected_camera, width=50, state="readonly")
         self.camera_dropdown.grid(row=1, column=1, columnspan=3, sticky="w", padx=(0, 10), pady=5)
         self.camera_dropdown.bind("<<ComboboxSelected>>", self.update_codec_dropdown)
         
         # Row 2: Codec
-        mk_label(inp, "Codec:", bg=SURFACE, fg=TEXT2).grid(row=2, column=0, sticky="w", padx=(14, 5), pady=5)
-        self.codec_dropdown = ttk.Combobox(inp, textvariable=self.selected_codec, width=10, state="readonly")
+        mk_label(db_frame, "Codec:", bg=SURFACE, fg=TEXT2).grid(row=2, column=0, sticky="w", padx=(14, 5), pady=5)
+        self.codec_dropdown = ttk.Combobox(db_frame, textvariable=self.selected_codec, width=10, state="readonly")
         self.codec_dropdown.grid(row=2, column=1, sticky="w", padx=(0, 10), pady=5)
         
         # Row 3: FPS
-        mk_label(inp, "FPS:", bg=SURFACE, fg=TEXT2).grid(row=3, column=0, sticky="w", padx=(14, 5), pady=5)
-        self.fps_dropdown = ttk.Combobox(inp, textvariable=self.selected_fps, width=10, state="readonly")
+        mk_label(db_frame, "FPS:", bg=SURFACE, fg=TEXT2).grid(row=3, column=0, sticky="w", padx=(14, 5), pady=5)
+        self.fps_dropdown = ttk.Combobox(db_frame, textvariable=self.selected_fps, width=10, state="readonly")
         self.fps_dropdown.grid(row=3, column=1, sticky="w", padx=(0, 10), pady=5)
         
         # Row 4: Quantity
-        mk_label(inp, "Quantity:", bg=SURFACE, fg=TEXT2).grid(row=4, column=0, sticky="w", padx=(14, 5), pady=5)
-        qty_entry = mk_entry(inp, textvariable=self.camera_quantity, width=10)
+        mk_label(db_frame, "Quantity:", bg=SURFACE, fg=TEXT2).grid(row=4, column=0, sticky="w", padx=(14, 5), pady=5)
+        qty_entry = mk_entry(db_frame, textvariable=self.camera_quantity, width=10)
         qty_entry.grid(row=4, column=1, sticky="w", padx=(0, 10), pady=5)
         
         # Row 5: Retention Days
-        mk_label(inp, "Retention Days:", bg=SURFACE, fg=TEXT2).grid(row=5, column=0, sticky="w", padx=(14, 5), pady=5)
-        days_entry = mk_entry(inp, textvariable=self.retention_days, width=10)
+        mk_label(db_frame, "Retention Days:", bg=SURFACE, fg=TEXT2).grid(row=5, column=0, sticky="w", padx=(14, 5), pady=5)
+        days_entry = mk_entry(db_frame, textvariable=self.retention_days, width=10)
         days_entry.grid(row=5, column=1, sticky="w", padx=(0, 10), pady=5)
         
-        # Row 6: Calculated Mbps (read-only)
-        mk_label(inp, "Mbps (calculated):", bg=SURFACE, fg=TEXT2).grid(row=6, column=0, sticky="w", padx=(14, 5), pady=5)
-        mbps_label = mk_label(inp, "", font=FONT_MONO, fg=ACCENT, bg=SURFACE, width=12)
+        # Row 6: Calculated Mbps
+        mk_label(db_frame, "Mbps (calculated):", bg=SURFACE, fg=TEXT2).grid(row=6, column=0, sticky="w", padx=(14, 5), pady=5)
+        mbps_label = mk_label(db_frame, "", font=FONT_MONO, fg=ACCENT, bg=SURFACE, width=12)
         mbps_label.grid(row=6, column=1, sticky="w", padx=(0, 10), pady=5)
-        # Bind the calculated value to display
         self.calculated_mbps.trace('w', lambda *args: mbps_label.config(text=self.calculated_mbps.get()))
         
-        # Row 7: Calculated Storage (read-only)
-        mk_label(inp, "Storage TB/cam (calculated):", bg=SURFACE, fg=TEXT2).grid(row=7, column=0, sticky="w", padx=(14, 5), pady=5)
-        storage_label = mk_label(inp, "", font=FONT_MONO, fg=ACCENT, bg=SURFACE, width=12)
+        # Row 7: Calculated Storage
+        mk_label(db_frame, "Storage TB/cam (calculated):", bg=SURFACE, fg=TEXT2).grid(row=7, column=0, sticky="w", padx=(14, 5), pady=5)
+        storage_label = mk_label(db_frame, "", font=FONT_MONO, fg=ACCENT, bg=SURFACE, width=12)
         storage_label.grid(row=7, column=1, sticky="w", padx=(0, 10), pady=5)
-        # Bind the calculated value to display
         self.calculated_storage.trace('w', lambda *args: storage_label.config(text=self.calculated_storage.get()))
         
-        # Buttons
-        btn_f = mk_frame(inp, bg=SURFACE)
-        btn_f.grid(row=8, column=0, columnspan=4, pady=(10, 0))
-        mk_btn(btn_f, "Add Camera", self.add_camera_from_database, style="primary").pack(side="left", padx=(0, 6))
-        mk_btn(btn_f, "Delete Selected", self.delete_camera, style="danger").pack(side="left")
+        # Buttons for database section
+        db_btn_f = mk_frame(db_frame, bg=SURFACE)
+        db_btn_f.grid(row=8, column=0, columnspan=4, pady=(10, 0))
+        mk_btn(db_btn_f, "Add Camera from DB", self.add_camera_from_database, style="primary").pack(side="left", padx=(0, 6))
 
-        sep(tab).grid(row=0, column=0, sticky="ew", padx=16)
+        sep1 = mk_frame(tab, bg=BORDER, height=2)
+        sep1.grid(row=1, column=0, sticky="ew", padx=16, pady=10)
 
-        # Camera tree
+        # ─────────────────────────────────────────────────────────────────────
+        # SECTION 2: Add Custom Camera (Manual Entry)
+        # ─────────────────────────────────────────────────────────────────────
+        custom_frame = mk_frame(tab, bg=SURFACE)
+        custom_frame.grid(row=2, column=0, sticky="ew", padx=16, pady=(5, 14))
+
+        mk_label(custom_frame, "Add Custom Camera (Manual Entry)", font=FONT_H2, fg=ACCENT, bg=SURFACE).grid(
+            row=0, column=0, columnspan=10, sticky="w", padx=14, pady=(10, 8))
+
+        custom_fields = [
+            ("Camera Name:", "custom_name", 25),
+            ("SKU (Part No.):", "custom_sku", 20),
+            ("Brand:", "custom_brand", 25),
+            ("Mbps:", "custom_mbps", 10),
+            ("Storage TB/cam:", "custom_storage", 10),
+            ("Quantity:", "custom_quantity", 10),
+        ]
+        
+        for i, (label, key, width) in enumerate(custom_fields):
+            mk_label(custom_frame, label, bg=SURFACE, fg=TEXT2).grid(row=i+1, column=0, sticky="w", padx=(14, 5), pady=5)
+            var = tk.StringVar()
+            e = mk_entry(custom_frame, textvariable=var, width=width)
+            e.grid(row=i+1, column=1, sticky="w", padx=(0, 10), pady=5)
+            self.custom_vars[key] = var
+        
+        # Option to add to database checkbox
+        self.add_to_database = tk.BooleanVar(value=False)
+        add_to_db_check = tk.Checkbutton(custom_frame, text="Add this camera to database (for future use)", 
+                                          variable=self.add_to_database,
+                                          bg=SURFACE, fg=TEXT2, selectcolor=SURFACE2,
+                                          activebackground=SURFACE, activeforeground=TEXT,
+                                          font=FONT_BODY)
+        add_to_db_check.grid(row=len(custom_fields)+1, column=0, columnspan=2, sticky="w", padx=(14, 5), pady=5)
+        
+        # Buttons for custom section
+        custom_btn_f = mk_frame(custom_frame, bg=SURFACE)
+        custom_btn_f.grid(row=len(custom_fields)+2, column=0, columnspan=2, pady=(10, 0))
+        mk_btn(custom_btn_f, "Add Custom Camera", self.add_custom_camera, style="primary").pack(side="left", padx=(0, 6))
+
+        sep2 = mk_frame(tab, bg=BORDER, height=2)
+        sep2.grid(row=3, column=0, sticky="ew", padx=16, pady=10)
+
+        # ─────────────────────────────────────────────────────────────────────
+        # Camera Tree
+        # ─────────────────────────────────────────────────────────────────────
         tree_f = mk_frame(tab, bg=SURFACE2)
-        tree_f.grid(row=1, column=0, sticky="nsew", padx=16, pady=14)
+        tree_f.grid(row=4, column=0, sticky="nsew", padx=16, pady=14)
         tree_f.columnconfigure(0, weight=1)
         tree_f.rowconfigure(0, weight=1)
 
@@ -599,6 +729,11 @@ class CCTVApp:
         self.tree.configure(yscrollcommand=vsb.set)
         self.tree.grid(row=0, column=0, sticky="nsew")
         vsb.grid(row=0, column=1, sticky="ns")
+
+        # Delete selected button for the tree
+        tree_btn_f = mk_frame(tree_f, bg=SURFACE2)
+        tree_btn_f.grid(row=1, column=0, pady=10)
+        mk_btn(tree_btn_f, "Delete Selected Camera", self.delete_camera, style="danger").pack()
 
         self.tree.bind("<<TreeviewSelect>>", self._on_cam_select)
 
@@ -754,16 +889,16 @@ class CCTVApp:
             self.progress_window.destroy()
         self.progress_window = None
 
-    # ── Tab 3: NVR Models (Fixed Layout) ─────────────────────────────────
+    # ── Tab 3: NVR Models (Treeview with proper alignment) ──────────────────
     def _build_nvr_tab(self, tab):
         tab.columnconfigure(0, weight=1)
         tab.rowconfigure(1, weight=1)
-    
+
         add_f = mk_frame(tab, bg=SURFACE)
         add_f.grid(row=0, column=0, sticky="ew", padx=16, pady=14)
         mk_label(add_f, "Add New NVR Model", font=FONT_H2, fg=ACCENT, bg=SURFACE).grid(
             row=0, column=0, columnspan=16, sticky="w", padx=14, pady=(10, 8))
-    
+
         self.nf = {}
         fields = [("Name", 14), ("SKU", 14), ("CH", 6), ("MB", 6), ("Slots", 6), ("Price", 8)]
         for col, (f, w) in enumerate(fields):
@@ -772,7 +907,7 @@ class CCTVApp:
             e = mk_entry(add_f, textvariable=var, width=w)
             e.grid(row=1, column=col*2+1, padx=(0, 2), pady=(0, 10))
             self.nf[f] = var
-    
+
         self.na = tk.StringVar(value="RAID")
         mk_label(add_f, "RAID/JBOD", bg=SURFACE, fg=TEXT2).grid(row=1, column=12, sticky="w", padx=(6, 3))
         ttk.Combobox(add_f, textvariable=self.na, width=7,
@@ -785,20 +920,23 @@ class CCTVApp:
         
         mk_btn(add_f, "ADD TO DATABASE", self.add_new_nvr, style="primary").grid(
             row=1, column=16, padx=(6, 14), pady=(0, 10))
-    
+        
+        # Delete button for selected NVR
+        mk_btn(add_f, "DELETE SELECTED", self._delete_nvr_from_tree, style="danger").grid(
+            row=1, column=17, padx=(6, 14), pady=(0, 10))
+
         sep(tab).grid(row=0, column=0, sticky="ew", padx=16)
-    
-        # Create a frame for the NVR list with Treeview for better alignment
+
+        # Create a frame for the NVR list with Treeview
         list_frame = mk_frame(tab, bg=SURFACE2)
         list_frame.grid(row=1, column=0, sticky="nsew", padx=16, pady=14)
         list_frame.columnconfigure(0, weight=1)
         list_frame.rowconfigure(0, weight=1)
-    
+
         # Create Treeview for NVR list
         columns = ("Name", "SKU", "Channels", "Bandwidth", "Slots", "Price", "Mode", "Brand")
         self.nvr_tree = ttk.Treeview(list_frame, columns=columns, show="headings", height=15)
         
-        # Define column headings and widths
         column_configs = [
             ("Name", 200, "w"),
             ("SKU", 150, "w"),
@@ -819,7 +957,6 @@ class CCTVApp:
         hsb = ttk.Scrollbar(list_frame, orient="horizontal", command=self.nvr_tree.xview)
         self.nvr_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
         
-        # Grid layout
         self.nvr_tree.grid(row=0, column=0, sticky="nsew")
         vsb.grid(row=0, column=1, sticky="ns")
         hsb.grid(row=1, column=0, sticky="ew")
@@ -827,28 +964,18 @@ class CCTVApp:
         # Bind double-click to edit price
         self.nvr_tree.bind("<Double-1>", self._on_nvr_double_click)
         
-        # Store price variables for editing
-        self.nvr_price_vars = {}
-        
         self.refresh_nvr_list_tab()
-    
+
     def refresh_nvr_list_tab(self):
         """Refresh the NVR list in the treeview"""
-        # Clear existing items
         for item in self.nvr_tree.get_children():
             self.nvr_tree.delete(item)
         
-        self.nvr_price_vars = {}
-        
         for i, n in enumerate(self.nvr_list):
-            # Determine tag for row color
             tag = "even" if i % 2 == 0 else "odd"
-            
-            # Format price
             price_str = f"${n['Price']:,.2f}"
             
-            # Insert row
-            item = self.nvr_tree.insert("", "end", values=(
+            self.nvr_tree.insert("", "end", values=(
                 n["Name"],
                 n["SKU"],
                 n["CH"],
@@ -858,29 +985,22 @@ class CCTVApp:
                 n.get("mode", "RAID"),
                 n.get("brand", "Tyco - American Dynamics"),
             ), tags=(tag,))
-            
-            # Store the original price for editing
-            self.nvr_price_vars[item] = n["Price"]
         
-        # Configure tag colors
         self.nvr_tree.tag_configure("odd", background=SURFACE)
         self.nvr_tree.tag_configure("even", background=SURFACE2)
-    
+
     def _on_nvr_double_click(self, event):
         """Handle double-click on NVR row to edit price"""
         item = self.nvr_tree.selection()[0] if self.nvr_tree.selection() else None
         if not item:
             return
         
-        # Get the current row's values
         values = self.nvr_tree.item(item, "values")
         if not values:
             return
         
-        # Get the current price (remove $ and commas)
         current_price = float(values[5].replace("$", "").replace(",", ""))
         
-        # Create a popup for editing
         edit_window = tk.Toplevel(self.root)
         edit_window.title("Edit Price")
         edit_window.configure(bg=SURFACE)
@@ -888,7 +1008,6 @@ class CCTVApp:
         edit_window.transient(self.root)
         edit_window.grab_set()
         
-        # Center the window
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 150
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 60
         edit_window.geometry(f"300x120+{x}+{y}")
@@ -905,13 +1024,11 @@ class CCTVApp:
                 if new_price <= 0:
                     raise ValueError("Price must be positive")
                 
-                # Find the NVR in the list and update
                 for idx, nvr in enumerate(self.nvr_list):
                     if nvr["Name"] == values[0] and nvr["SKU"] == values[1]:
                         self.nvr_list[idx]["Price"] = new_price
                         break
                 
-                # Update the display
                 self.refresh_nvr_list_tab()
                 edit_window.destroy()
                 
@@ -922,18 +1039,7 @@ class CCTVApp:
         btn_frame.pack(pady=10)
         mk_btn(btn_frame, "Save", save_price, style="primary").pack(side="left", padx=5)
         mk_btn(btn_frame, "Cancel", edit_window.destroy, style="ghost").pack(side="left", padx=5)
-    
-    def save_nvr_prices(self):
-        """Save all NVR prices to file"""
-        # Prices are already updated in real-time via double-click
-        self.save_all_data()
-        messagebox.showinfo("Saved", "NVR Prices Updated.")
-    
-    def delete_nvr(self, idx):
-        """Delete NVR by index - this is kept for reference but not used with treeview"""
-        # This method is kept for compatibility but the treeview has its own delete
-        pass
-    
+
     def _delete_nvr_from_tree(self):
         """Delete the selected NVR from the treeview"""
         selected = self.nvr_tree.selection()
@@ -943,24 +1049,18 @@ class CCTVApp:
         
         if messagebox.askyesno("Confirm", "Delete the selected NVR model?"):
             for item in selected:
-                # Get the values to find which NVR to delete
                 values = self.nvr_tree.item(item, "values")
                 if values:
-                    # Find and remove from nvr_list
                     for idx, nvr in enumerate(self.nvr_list):
                         if nvr["Name"] == values[0] and nvr["SKU"] == values[1]:
                             self.nvr_list.pop(idx)
                             break
-                
-                # Remove from treeview
                 self.nvr_tree.delete(item)
             
-            # Save changes
             self.save_all_data()
             self.refresh_nvr_dropdowns()
-    
+
     def add_new_nvr(self):
-        """Add a new NVR to the database"""
         try:
             name = self.nf["Name"].get().strip()
             if not name:
@@ -980,21 +1080,16 @@ class CCTVApp:
             price_str = self.nf["Price"].get().strip()
             if not price_str:
                 raise ValueError("Price required")
-    
+
             row = {
-                "Name": name, 
-                "SKU": sku, 
-                "CH": int(ch_str), 
-                "MB": int(mb_str),
-                "Slots": int(slots_str), 
-                "Price": float(price_str),
-                "mode": self.na.get(), 
-                "brand": self.nf_brand.get(),
+                "Name": name, "SKU": sku, "CH": int(ch_str), "MB": int(mb_str),
+                "Slots": int(slots_str), "Price": float(price_str),
+                "mode": self.na.get(), "brand": self.nf_brand.get(),
             }
-    
+
             if row["CH"] <= 0 or row["MB"] <= 0 or row["Slots"] <= 0 or row["Price"] <= 0:
                 raise ValueError("All values must be positive")
-    
+
             self.nvr_list.append(row)
             self.save_all_data()
             self.refresh_nvr_dropdowns()
@@ -1095,14 +1190,12 @@ class CCTVApp:
     
     def auto_calculate_optimized(self, cameras):
         """Optimized auto-calculation with multiprocessing"""
-        # Filter by brand
         brand = self.brand_filter.get()
         if brand == "All":
             available_nvrs = self.nvr_list.copy()
         else:
             available_nvrs = [n for n in self.nvr_list if n.get("brand", "") == brand]
         
-        # Filter by RAID compatibility
         raid_mode = self.raid_var.get()
         compatible_nvrs = []
         for nvr in available_nvrs:
@@ -1115,7 +1208,7 @@ class CCTVApp:
         if not compatible_nvrs:
             compatible_nvrs = available_nvrs
         
-        # Remove dominated NVRs (cheaper and better specs)
+        # Remove dominated NVRs
         compatible_nvrs = self.filter_dominated_nvrs(compatible_nvrs)
         
         # Flatten cameras
@@ -1127,7 +1220,7 @@ class CCTVApp:
         total_cam = len(flat_cams)
         total_bw = sum(x[1] for x in flat_cams)
         
-        # Generate combinations to test
+        # Generate combinations
         combos_to_test = []
         for k in range(1, min(5, len(compatible_nvrs) + 2)):
             for combo in itertools.combinations_with_replacement(compatible_nvrs, k):
@@ -1140,11 +1233,9 @@ class CCTVApp:
         if not combos_to_test:
             return None
         
-        # Process in parallel
         best_result = None
         best_cost = float('inf')
         
-        # Use fewer processes to avoid overhead
         with ProcessPoolExecutor(max_workers=min(4, len(combos_to_test))) as executor:
             futures = {executor.submit(solve_combo, *c): c for c in combos_to_test}
             
@@ -1160,7 +1251,7 @@ class CCTVApp:
         return best_result
     
     def filter_dominated_nvrs(self, nvrs):
-        """Remove NVRs that are strictly worse than another (cheaper and better specs)"""
+        """Remove NVRs that are strictly worse than another"""
         filtered = []
         for i, a in enumerate(nvrs):
             dominated = False
@@ -1248,13 +1339,13 @@ class CCTVApp:
         if not EXCEL_AVAILABLE:
             messagebox.showerror("Error", "Excel export requires xlwings.\nInstall: pip install xlwings")
             return
-    
+
         template_file = filedialog.askopenfilename(
             title="Select Excel Template",
             filetypes=[("Excel files", "*.xlsx")])
         if not template_file:
             return
-    
+
         save_option = messagebox.askyesno("Save Option",
             "Yes = Save as new file\nNo = Overwrite template")
         output_file = template_file
@@ -1264,7 +1355,7 @@ class CCTVApp:
                 initialfile=f"CCTV_Quote_{datetime.now().strftime('%Y%m%d_%H%M')}")
             if not output_file:
                 return
-    
+
         progress_msg = tk.Toplevel(self.root)
         progress_msg.title("Exporting...")
         progress_msg.configure(bg=SURFACE)
@@ -1274,13 +1365,13 @@ class CCTVApp:
         mk_label(progress_msg, "Exporting to Excel...",
                 font=FONT_H2, fg=ACCENT, bg=SURFACE).pack(pady=(20, 10))
         self.root.update()
-    
+
         app = None
         wb = None
         try:
             app = xw.App(visible=False, add_book=False)
             wb = app.books.open(template_file)
-    
+
             sheet_name = None
             for name in wb.sheet_names:
                 if name.lower() == "offer":
@@ -1288,11 +1379,11 @@ class CCTVApp:
                     break
             if not sheet_name:
                 raise Exception("Sheet 'offer' not found!")
-    
+
             ws = wb.sheets[sheet_name]
             cameras = self.last_calculation_result["cameras"]
             nvr_config = self.last_calculation_result["nvr_config"]
-    
+
             # Group identical NVRs
             nvr_groups = {}
             for unit in nvr_config:
@@ -1305,7 +1396,7 @@ class CCTVApp:
                     nvr_groups[key] = {"sku": sku, "hdd_cap": hdd_cap, "hdd_qty": hdd_qty, "count": 1, "brand": brand}
                 else:
                     nvr_groups[key]["count"] += 1
-    
+
             # Prepare data rows
             excel_rows = []
             
@@ -1315,41 +1406,36 @@ class CCTVApp:
             for cam in cameras:
                 cam_name = cam[0]
                 cam_qty = int(cam[1])
-                # Get camera SKU from database (use the name to look up)
                 cam_sku = self.camera_db.get(cam_name, {}).get("sku", cam_name)
                 cam_brand = self.camera_db.get(cam_name, {}).get("brand", "")
-                # Camera row - SKU goes to Column F
                 excel_rows.append((cam_sku, cam_qty, "", cam_brand, "CCTV", "Camera", "data", "", None))
-                # CAMLIC row
                 excel_rows.append(("CAMLIC", 1, "ch", "", "CCTV", "Software", "data", "", None))
             
             # NVRs header
             excel_rows.append(("", "", "", "", "", "", "header", "NVRs", None))
             
             for key, group in nvr_groups.items():
-                # NVR row - SKU to Column F
                 excel_rows.append((group["sku"], group["count"], "", group["brand"], "CCTV", "NVR", "data", "", None))
-                # HDD row
                 excel_rows.append((f"{group['hdd_cap']}TB HDD", group["hdd_qty"], "ch", "", "CCTV", "HDD", "data", "", None))
             
             # VMS header
             excel_rows.append(("", "", "", "", "", "", "header", "VMS", None))
             excel_rows.append(("VMS", 1, "", "", "CCTV", "Software", "data", "", None))
-    
+
             current_row = 9
             
             # Track which rows are headers to only clear those
             header_rows = []
             row_counter = current_row
             for row_data in excel_rows:
-                if row_data[6] == "header":  # row_type is at index 6
+                if row_data[6] == "header":
                     header_rows.append(row_counter)
                 row_counter += 1
             
-            # ONLY clear the header rows (not every row)
+            # ONLY clear the header rows
             for row in header_rows:
                 ws.range(f"A{row}:M{row}").value = None
-    
+
             # Write new data
             for row_data in excel_rows:
                 part_no, qty, sys, brand, solution, category, row_type, header_text, _ = row_data
@@ -1362,7 +1448,6 @@ class CCTVApp:
                     except:
                         pass
                 else:
-                    # Data rows - write to specific columns
                     if part_no:
                         ws.range(f"F{current_row}").value = part_no
                     if qty:
@@ -1377,13 +1462,13 @@ class CCTVApp:
                         ws.range(f"M{current_row}").value = category
                 
                 current_row += 1
-    
+
             wb.save(output_file)
             wb.close()
             app.quit()
             progress_msg.destroy()
             messagebox.showinfo("Success", f"Exported to {os.path.basename(output_file)}")
-    
+
         except Exception as e:
             progress_msg.destroy()
             if app:
