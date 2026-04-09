@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-CCTV Master Calculator - Optimized Multi-processing Version
+CCTV Master Calculator
 """
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
-import math, itertools, json, os
+import math, itertools, json, os, sys
 from datetime import datetime
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import threading
@@ -26,17 +26,17 @@ DEFAULT_HDD_PRICES = {
 }
 
 DEFAULT_NVR_DATA = [
-    {"Name": "1U RAID",        "SKU": "ADVER00N0NP16G", "CH": 32,  "MB": 50,   "Slots": 4,  "Price": 3750.0,  "mode": "RAID",   "brand": "American Dynamics"},
-    {"Name": "2U 64 Ch",       "SKU": "ADVER12R0N2H",   "CH": 64,  "MB": 300,  "Slots": 6,  "Price": 10416.7, "mode": "RAID",   "brand": "American Dynamics"},
-    {"Name": "2U 100 Ch",      "SKU": "ADVER00RN2J",    "CH": 100, "MB": 600,  "Slots": 8,  "Price": 11666.7, "mode": "RAID",   "brand": "American Dynamics"},
-    {"Name": "2U 128 Ch",      "SKU": "ADVER72R5N2H",   "CH": 128, "MB": 600,  "Slots": 12, "Price": 25000.0, "mode": "RAID",   "brand": "American Dynamics"},
-    {"Name": "2U Rack 175 Ch", "SKU": "ADVER02RDK",     "CH": 175, "MB": 1000, "Slots": 12, "Price": 13854.2, "mode": "RAID",   "brand": "American Dynamics"},
-    {"Name": "2U Rack 200 Ch", "SKU": "ADVER02RDK",     "CH": 200, "MB": 1500, "Slots": 12, "Price": 12812.5, "mode": "RAID",   "brand": "American Dynamics"},
-    {"Name": "Micro NVR",      "SKU": "ADVEM00N0NP8AH", "CH": 8,   "MB": 80,   "Slots": 1,  "Price": 1500.0,  "mode": "JBOD",   "brand": "American Dynamics"},
-    {"Name": "Desktop JBOD",   "SKU": "ADVED00N0N5H",   "CH": 50,  "MB": 200,  "Slots": 2,  "Price": 2291.7,  "mode": "JBOD",   "brand": "American Dynamics"},
-    {"Name": "2U 75 Ch",       "SKU": "ADVER00N0N2J",   "CH": 75,  "MB": 400,  "Slots": 4,  "Price": 5312.5,  "mode": "JBOD",   "brand": "American Dynamics"},
-    {"Name": "Holis 8 Ch",     "SKU": "HRN-08013P",     "CH": 8,   "MB": 160,  "Slots": 1,  "Price": 520.85,  "mode": "JBOD",   "brand": "Holis"},
-    {"Name": "Holis 16 Ch",    "SKU": "HRN-16023P",     "CH": 16,  "MB": 320,  "Slots": 2,  "Price": 770.85,  "mode": "JBOD",   "brand": "Holis"},
+    {"Name": "1U RAID",        "SKU": "ADVER00N0NP16G", "CH": 32,  "MB": 50,   "Slots": 4,  "Price": 3750.0,  "mode": "RAID",   "brand": "Tyco - American Dynamics"},
+    {"Name": "2U 64 Ch",       "SKU": "ADVER12R0N2H",   "CH": 64,  "MB": 300,  "Slots": 6,  "Price": 10416.7, "mode": "RAID",   "brand": "Tyco - American Dynamics"},
+    {"Name": "2U 100 Ch",      "SKU": "ADVER00RN2J",    "CH": 100, "MB": 600,  "Slots": 8,  "Price": 11666.7, "mode": "RAID",   "brand": "Tyco - American Dynamics"},
+    {"Name": "2U 128 Ch",      "SKU": "ADVER72R5N2H",   "CH": 128, "MB": 600,  "Slots": 12, "Price": 25000.0, "mode": "RAID",   "brand": "Tyco - American Dynamics"},
+    {"Name": "2U Rack 175 Ch", "SKU": "ADVER02RDK",     "CH": 175, "MB": 1000, "Slots": 12, "Price": 13854.2, "mode": "RAID",   "brand": "Tyco - American Dynamics"},
+    {"Name": "2U Rack 200 Ch", "SKU": "ADVER02RDK",     "CH": 200, "MB": 1500, "Slots": 12, "Price": 12812.5, "mode": "RAID",   "brand": "Tyco - American Dynamics"},
+    {"Name": "Micro NVR",      "SKU": "ADVEM00N0NP8AH", "CH": 8,   "MB": 80,   "Slots": 1,  "Price": 1500.0,  "mode": "JBOD",   "brand": "Tyco - American Dynamics"},
+    {"Name": "Desktop JBOD",   "SKU": "ADVED00N0N5H",   "CH": 50,  "MB": 200,  "Slots": 2,  "Price": 2291.7,  "mode": "JBOD",   "brand": "Tyco - American Dynamics"},
+    {"Name": "2U 75 Ch",       "SKU": "ADVER00N0N2J",   "CH": 75,  "MB": 400,  "Slots": 4,  "Price": 5312.5,  "mode": "JBOD",   "brand": "Tyco - American Dynamics"},
+    {"Name": "Holis 8 Ch",     "SKU": "HRN-08013P",     "CH": 8,   "MB": 160,  "Slots": 1,  "Price": 520.85,  "mode": "JBOD",   "brand": "Tyco - Holis"},
+    {"Name": "Holis 16 Ch",    "SKU": "HRN-16023P",     "CH": 16,  "MB": 320,  "Slots": 2,  "Price": 770.85,  "mode": "JBOD",   "brand": "Tyco - Holis"},
 ]
 
 # ─────────────────────────── Colors & Fonts ────────────────────────────────
@@ -243,6 +243,36 @@ def solve_combo(flat_cams, nvrs, raid_mode, hdd_prices):
     dfs(0, 0, total_cameras, 0, [])
     return best_result, best_cost
 
+# ================= CAMERA DATABASE LOADER =================
+def get_resource_path():
+    """Get the correct path for resources whether running as script or compiled EXE"""
+    if getattr(sys, 'frozen', False):
+        # Running as compiled EXE
+        return sys._MEIPASS
+    else:
+        # Running as script
+        return os.path.dirname(os.path.abspath(__file__))
+
+def load_camera_database():
+    """Load camera database from JSON file"""
+    try:
+        json_path = os.path.join(get_resource_path(), "Cameras_JSON.json")
+        with open(json_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print("Warning: Cameras_JSON.json not found. Using empty database.")
+        return {}
+    except json.JSONDecodeError as e:
+        print(f"Error parsing Cameras_JSON.json: {e}")
+        return {}
+
+# Calculate storage in TB per camera
+def calculate_storage_tb(mbps, days):
+    """Calculate storage in TB per camera for given Mbps and retention days"""
+    # Formula: (Mbps × 324 × (days/30)) / 1024
+    # Simplified: Mbps × days × 0.01055
+    return mbps * days * 0.01055
+
 # ─────────────────────────── Widget Helpers ────────────────────────────────
 def mk_frame(parent, bg=SURFACE, **kw):
     return tk.Frame(parent, bg=bg, **kw)
@@ -285,7 +315,7 @@ def sep(parent, bg=BORDER, vertical=False):
 class CCTVApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("CCTV Master Calculator")
+        self.root.title("CCTV Master Calculator by Saher & Abdelrahman")
         self.root.configure(bg=BG)
         self.root.geometry("1200x820")
         self.root.minsize(1000, 700)
@@ -296,10 +326,31 @@ class CCTVApp:
         self.nvr_price_entries = []
         self.progress_window = None
         self.brand_filter = tk.StringVar(value="All")
+        
+        # Camera database
+        self.camera_db = load_camera_database()
+        
+        # UI Variables for camera entry
+        self.selected_camera = tk.StringVar()
+        self.selected_codec = tk.StringVar()
+        self.selected_fps = tk.StringVar()
+        self.camera_quantity = tk.StringVar(value="1")
+        self.retention_days = tk.StringVar(value="30")
+        self.calculated_mbps = tk.StringVar(value="0.00")
+        self.calculated_storage = tk.StringVar(value="0.00")
+        
+        # Bind trace to update Mbps and Storage when selections change
+        self.selected_camera.trace('w', self.update_codec_dropdown)
+        self.selected_codec.trace('w', self.update_fps_dropdown)
+        self.selected_fps.trace('w', self.update_mbps_and_storage)
+        self.retention_days.trace('w', self.update_storage_only)
 
         self.load_all_data()
         self.setup_ui()
         self._apply_ttk_styles()
+        
+        # Populate camera dropdown after UI is built
+        self.populate_camera_dropdown()
 
     def load_all_data(self):
         if os.path.exists(DATA_FILE):
@@ -372,34 +423,164 @@ class CCTVApp:
         self._build_nvr_tab(self.tabs[2])
         self._build_hdd_tab(self.tabs[3])
 
-    # ── Tab 1: Cameras ────────────────────────────────────────────────────
+    # ── Tab 1: Cameras (Updated with JSON integration) ────────────────────
+    def populate_camera_dropdown(self):
+        """Populate camera dropdown with names from database"""
+        camera_names = sorted(self.camera_db.keys())
+        if camera_names:
+            self.camera_dropdown['values'] = camera_names
+            self.selected_camera.set(camera_names[0])
+        else:
+            self.camera_dropdown['values'] = ["No cameras found"]
+    
+    def update_codec_dropdown(self, *args):
+        """Update codec dropdown based on selected camera"""
+        camera_name = self.selected_camera.get()
+        if camera_name and camera_name in self.camera_db:
+            codecs = list(self.camera_db[camera_name].get("throughputs", {}).keys())
+            self.codec_dropdown['values'] = codecs
+            if codecs:
+                self.selected_codec.set(codecs[0])
+            else:
+                self.selected_codec.set("")
+        else:
+            self.codec_dropdown['values'] = []
+            self.selected_codec.set("")
+    
+    def update_fps_dropdown(self, *args):
+        """Update FPS dropdown based on selected camera and codec"""
+        camera_name = self.selected_camera.get()
+        codec = self.selected_codec.get()
+        if camera_name and camera_name in self.camera_db and codec:
+            throughputs = self.camera_db[camera_name].get("throughputs", {}).get(codec, {})
+            fps_list = sorted(throughputs.keys(), key=lambda x: int(x.replace('fps', '')))
+            self.fps_dropdown['values'] = fps_list
+            if fps_list:
+                self.selected_fps.set(fps_list[0])
+            else:
+                self.selected_fps.set("")
+        else:
+            self.fps_dropdown['values'] = []
+            self.selected_fps.set("")
+    
+    def update_mbps_and_storage(self, *args):
+        """Update Mbps and Storage based on current selections"""
+        camera_name = self.selected_camera.get()
+        codec = self.selected_codec.get()
+        fps = self.selected_fps.get()
+        
+        if camera_name and camera_name in self.camera_db and codec and fps:
+            mbps = self.camera_db[camera_name].get("throughputs", {}).get(codec, {}).get(fps, 0)
+            self.calculated_mbps.set(f"{mbps:.2f}")
+            
+            # Update storage
+            self.update_storage_only()
+        else:
+            self.calculated_mbps.set("0.00")
+            self.calculated_storage.set("0.00")
+    
+    def update_storage_only(self, *args):
+        """Update only storage calculation (when retention days changes)"""
+        try:
+            mbps = float(self.calculated_mbps.get())
+            days = float(self.retention_days.get()) if self.retention_days.get() else 0
+            storage_tb = calculate_storage_tb(mbps, days)
+            self.calculated_storage.set(f"{storage_tb:.2f}")
+        except ValueError:
+            self.calculated_storage.set("0.00")
+    
+    def add_camera_from_database(self):
+        """Add camera to the tree using values from database selection"""
+        try:
+            camera_name = self.selected_camera.get()
+            if not camera_name or camera_name == "No cameras found":
+                messagebox.showerror("Error", "Please select a valid camera model.")
+                return
+            
+            quantity = self.camera_quantity.get().strip()
+            if not quantity:
+                raise ValueError("Quantity cannot be empty")
+            
+            mbps = float(self.calculated_mbps.get())
+            if mbps <= 0:
+                raise ValueError("Invalid Mbps value")
+            
+            storage_tb = float(self.calculated_storage.get())
+            if storage_tb <= 0:
+                raise ValueError("Invalid storage value")
+            
+            qty = int(quantity)
+            if qty <= 0:
+                raise ValueError("Quantity must be positive")
+            
+            # Add to tree
+            tag = "even" if len(self.tree.get_children()) % 2 == 0 else "odd"
+            self.tree.insert("", "end", values=(camera_name, qty, f"{mbps:.2f}", f"{storage_tb:.2f}"), tags=(tag,))
+            self.refresh_nvr_dropdowns()
+            
+        except ValueError as e:
+            messagebox.showerror("Error", f"Invalid input: {e}")
+    
     def _build_cameras_tab(self, tab):
         tab.columnconfigure(0, weight=1)
         tab.rowconfigure(1, weight=1)
 
+        # Input panel
         inp = mk_frame(tab, bg=SURFACE)
         inp.grid(row=0, column=0, sticky="ew", padx=16, pady=14)
 
-        mk_label(inp, "Add / Update Camera", font=FONT_H2, fg=ACCENT, bg=SURFACE).grid(
+        mk_label(inp, "Add Camera from Database", font=FONT_H2, fg=ACCENT, bg=SURFACE).grid(
             row=0, column=0, columnspan=10, sticky="w", padx=14, pady=(10, 8))
 
-        fields = ["Name", "Count", "Mbps/cam", "Storage TB/cam"]
-        defaults = ["Bullet Cam", "64", "4.0", "1.0"]
-        self.ents = {}
-        for col, (f, d) in enumerate(zip(fields, defaults)):
-            mk_label(inp, f, bg=SURFACE, fg=TEXT2).grid(row=1, column=col*2, sticky="w", padx=(14 if col==0 else 8, 4))
-            var = tk.StringVar(value=d)
-            e = mk_entry(inp, textvariable=var, width=13)
-            e.grid(row=1, column=col*2+1, padx=(0, 4), pady=(0, 10))
-            self.ents[f] = var
-
+        # Row 1: Camera Model
+        mk_label(inp, "Camera Model:", bg=SURFACE, fg=TEXT2).grid(row=1, column=0, sticky="w", padx=(14, 5), pady=5)
+        self.camera_dropdown = ttk.Combobox(inp, textvariable=self.selected_camera, width=50, state="readonly")
+        self.camera_dropdown.grid(row=1, column=1, columnspan=3, sticky="w", padx=(0, 10), pady=5)
+        self.camera_dropdown.bind("<<ComboboxSelected>>", self.update_codec_dropdown)
+        
+        # Row 2: Codec
+        mk_label(inp, "Codec:", bg=SURFACE, fg=TEXT2).grid(row=2, column=0, sticky="w", padx=(14, 5), pady=5)
+        self.codec_dropdown = ttk.Combobox(inp, textvariable=self.selected_codec, width=10, state="readonly")
+        self.codec_dropdown.grid(row=2, column=1, sticky="w", padx=(0, 10), pady=5)
+        
+        # Row 3: FPS
+        mk_label(inp, "FPS:", bg=SURFACE, fg=TEXT2).grid(row=3, column=0, sticky="w", padx=(14, 5), pady=5)
+        self.fps_dropdown = ttk.Combobox(inp, textvariable=self.selected_fps, width=10, state="readonly")
+        self.fps_dropdown.grid(row=3, column=1, sticky="w", padx=(0, 10), pady=5)
+        
+        # Row 4: Quantity
+        mk_label(inp, "Quantity:", bg=SURFACE, fg=TEXT2).grid(row=4, column=0, sticky="w", padx=(14, 5), pady=5)
+        qty_entry = mk_entry(inp, textvariable=self.camera_quantity, width=10)
+        qty_entry.grid(row=4, column=1, sticky="w", padx=(0, 10), pady=5)
+        
+        # Row 5: Retention Days
+        mk_label(inp, "Retention Days:", bg=SURFACE, fg=TEXT2).grid(row=5, column=0, sticky="w", padx=(14, 5), pady=5)
+        days_entry = mk_entry(inp, textvariable=self.retention_days, width=10)
+        days_entry.grid(row=5, column=1, sticky="w", padx=(0, 10), pady=5)
+        
+        # Row 6: Calculated Mbps (read-only)
+        mk_label(inp, "Mbps (calculated):", bg=SURFACE, fg=TEXT2).grid(row=6, column=0, sticky="w", padx=(14, 5), pady=5)
+        mbps_label = mk_label(inp, "", font=FONT_MONO, fg=ACCENT, bg=SURFACE, width=12)
+        mbps_label.grid(row=6, column=1, sticky="w", padx=(0, 10), pady=5)
+        # Bind the calculated value to display
+        self.calculated_mbps.trace('w', lambda *args: mbps_label.config(text=self.calculated_mbps.get()))
+        
+        # Row 7: Calculated Storage (read-only)
+        mk_label(inp, "Storage TB/cam (calculated):", bg=SURFACE, fg=TEXT2).grid(row=7, column=0, sticky="w", padx=(14, 5), pady=5)
+        storage_label = mk_label(inp, "", font=FONT_MONO, fg=ACCENT, bg=SURFACE, width=12)
+        storage_label.grid(row=7, column=1, sticky="w", padx=(0, 10), pady=5)
+        # Bind the calculated value to display
+        self.calculated_storage.trace('w', lambda *args: storage_label.config(text=self.calculated_storage.get()))
+        
+        # Buttons
         btn_f = mk_frame(inp, bg=SURFACE)
-        btn_f.grid(row=1, column=len(fields)*2, padx=(8, 14), pady=(0, 10))
-        mk_btn(btn_f, "Add / Update", self.save_camera, style="primary").pack(side="left", padx=(0, 6))
-        mk_btn(btn_f, "Delete", self.delete_camera, style="danger").pack(side="left")
+        btn_f.grid(row=8, column=0, columnspan=4, pady=(10, 0))
+        mk_btn(btn_f, "Add Camera", self.add_camera_from_database, style="primary").pack(side="left", padx=(0, 6))
+        mk_btn(btn_f, "Delete Selected", self.delete_camera, style="danger").pack(side="left")
 
         sep(tab).grid(row=0, column=0, sticky="ew", padx=16)
 
+        # Camera tree
         tree_f = mk_frame(tab, bg=SURFACE2)
         tree_f.grid(row=1, column=0, sticky="nsew", padx=16, pady=14)
         tree_f.columnconfigure(0, weight=1)
@@ -407,7 +588,7 @@ class CCTVApp:
 
         cols = ("Name", "Count", "Mbps/cam", "Storage TB/cam")
         self.tree = ttk.Treeview(tree_f, columns=cols, show="headings")
-        widths = [260, 80, 100, 130]
+        widths = [400, 80, 100, 130]
         for c, w in zip(cols, widths):
             self.tree.heading(c, text=c)
             self.tree.column(c, width=w, anchor="center" if c != "Name" else "w")
@@ -424,42 +605,7 @@ class CCTVApp:
     def _on_cam_select(self, event):
         sel = self.tree.selection()
         if not sel: return
-        vals = self.tree.item(sel[0])["values"]
-        keys = ["Name", "Count", "Mbps/cam", "Storage TB/cam"]
-        for k, v in zip(keys, vals):
-            self.ents[k].set(str(v))
-
-    def save_camera(self):
-        try:
-            name = self.ents["Name"].get().strip()
-            if not name:
-                raise ValueError("Camera name cannot be empty")
-            count = self.ents["Count"].get().strip()
-            if not count:
-                raise ValueError("Count cannot be empty")
-            mbps = self.ents["Mbps/cam"].get().strip()
-            if not mbps:
-                raise ValueError("Mbps/cam cannot be empty")
-            storage = self.ents["Storage TB/cam"].get().strip()
-            if not storage:
-                raise ValueError("Storage TB/cam cannot be empty")
-            float(count); float(mbps); float(storage)
-            if float(count) <= 0:
-                raise ValueError("Count must be positive")
-            if float(mbps) <= 0:
-                raise ValueError("Mbps/cam must be positive")
-            if float(storage) <= 0:
-                raise ValueError("Storage TB/cam must be positive")
-        except ValueError as e:
-            messagebox.showerror("Error", f"Invalid input: {e}")
-            return
-
-        sel = self.tree.selection()
-        if sel:
-            self.tree.delete(sel[0])
-        tag = "even" if len(self.tree.get_children()) % 2 == 0 else "odd"
-        self.tree.insert("", "end", values=(name, count, mbps, storage), tags=(tag,))
-        self.refresh_nvr_dropdowns()
+        # Just keep selection, don't populate inputs
 
     def delete_camera(self):
         for s in self.tree.selection():
@@ -503,8 +649,8 @@ class CCTVApp:
         row2.pack(fill="x", padx=14, pady=(0, 10))
         mk_label(row2, "NVR Brand:", bg=SURFACE, fg=TEXT2).pack(side="left", padx=(0, 6))
         self.brand_filter = tk.StringVar(value="All")
-        brand_combo = ttk.Combobox(row2, textvariable=self.brand_filter, width=20,
-                                   state="readonly", values=["All", "American Dynamics", "Holis"])
+        brand_combo = ttk.Combobox(row2, textvariable=self.brand_filter, width=25,
+                                   state="readonly", values=["All", "Tyco - American Dynamics", "Tyco - Holis"])
         brand_combo.bind("<<ComboboxSelected>>", lambda x: self.refresh_nvr_dropdowns())
         brand_combo.pack(side="left")
         mk_label(row2, "(Filters NVRs shown below)", bg=SURFACE, fg=TEXT3, font=FONT_BODY).pack(side="left", padx=(10, 0))
@@ -608,7 +754,7 @@ class CCTVApp:
             self.progress_window.destroy()
         self.progress_window = None
 
-    # ── Tab 3: NVR Models ─────────────────────────────────────────────────
+    # ── Tab 3: NVR Models (Fixed Layout) ─────────────────────────────────
     def _build_nvr_tab(self, tab):
         tab.columnconfigure(0, weight=1)
         tab.rowconfigure(1, weight=1)
@@ -616,7 +762,7 @@ class CCTVApp:
         add_f = mk_frame(tab, bg=SURFACE)
         add_f.grid(row=0, column=0, sticky="ew", padx=16, pady=14)
         mk_label(add_f, "Add New NVR Model", font=FONT_H2, fg=ACCENT, bg=SURFACE).grid(
-            row=0, column=0, columnspan=13, sticky="w", padx=14, pady=(10, 8))
+            row=0, column=0, columnspan=16, sticky="w", padx=14, pady=(10, 8))
 
         self.nf = {}
         fields = [("Name", 14), ("SKU", 14), ("CH", 6), ("MB", 6), ("Slots", 6), ("Price", 8)]
@@ -631,10 +777,12 @@ class CCTVApp:
         mk_label(add_f, "RAID/JBOD", bg=SURFACE, fg=TEXT2).grid(row=1, column=12, sticky="w", padx=(6, 3))
         ttk.Combobox(add_f, textvariable=self.na, width=7,
                      state="readonly", values=["RAID", "JBOD"]).grid(row=1, column=13, padx=(0, 6), pady=(0, 10))
-        self.nf_brand = tk.StringVar(value="American Dynamics")
+        
+        self.nf_brand = tk.StringVar(value="Tyco - American Dynamics")
         mk_label(add_f, "Brand:", bg=SURFACE, fg=TEXT2).grid(row=1, column=14, sticky="w", padx=(6, 3))
-        ttk.Combobox(add_f, textvariable=self.nf_brand, width=15,
-                     state="readonly", values=["American Dynamics", "Holis"]).grid(row=1, column=15, padx=(0, 6), pady=(0, 10))
+        ttk.Combobox(add_f, textvariable=self.nf_brand, width=20,
+                     state="readonly", values=["Tyco - American Dynamics", "Tyco - Holis"]).grid(row=1, column=15, padx=(0, 6), pady=(0, 10))
+        
         mk_btn(add_f, "ADD TO DATABASE", self.add_new_nvr, style="primary").grid(
             row=1, column=16, padx=(6, 14), pady=(0, 10))
 
@@ -643,37 +791,43 @@ class CCTVApp:
         list_outer = mk_frame(tab, bg=SURFACE2)
         list_outer.grid(row=1, column=0, sticky="nsew", padx=16, pady=14)
         list_outer.columnconfigure(0, weight=1)
-        list_outer.rowconfigure(0, weight=1)
+        list_outer.rowconfigure(1, weight=1)
 
+        # Header frame
+        header_frame = mk_frame(list_outer, bg=SURFACE3)
+        header_frame.grid(row=0, column=0, sticky="ew", pady=(0, 2))
+        
+        headers = ["Name", "SKU", "Channels", "Max MB/s", "HDD Slots", "Price ($)", "Mode", "Brand", ""]
+        widths = [22, 18, 8, 8, 8, 10, 7, 15, 6]
+        
+        for col, (header, width) in enumerate(zip(headers, widths)):
+            mk_label(header_frame, header, font=FONT_H3, fg=ACCENT, bg=SURFACE3, 
+                    width=width, anchor="w").grid(row=0, column=col, padx=8, pady=6, sticky="w")
+
+        # Canvas for scrolling
         canvas = tk.Canvas(list_outer, bg=SURFACE2, highlightthickness=0)
+        canvas.grid(row=1, column=0, sticky="nsew")
+        
         vsb = ttk.Scrollbar(list_outer, orient="vertical", command=canvas.yview)
+        vsb.grid(row=1, column=1, sticky="ns")
         canvas.configure(yscrollcommand=vsb.set)
-        canvas.grid(row=0, column=0, sticky="nsew")
-        vsb.grid(row=0, column=1, sticky="ns")
+        
+        list_outer.columnconfigure(0, weight=1)
+        list_outer.rowconfigure(1, weight=1)
 
         self.nvr_frame = mk_frame(canvas, bg=SURFACE2)
-        self.nvr_canvas_win = canvas.create_window((0, 0), window=self.nvr_frame, anchor="nw")
+        canvas.create_window((0, 0), window=self.nvr_frame, anchor="nw")
 
         def _on_resize(e):
-            canvas.itemconfig(self.nvr_canvas_win, width=e.width)
-        canvas.bind("<Configure>", _on_resize)
-        self.nvr_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        self.nvr_canvas = canvas
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        self.nvr_frame.bind("<Configure>", _on_resize)
+        
         self.nvr_price_entries = []
-
-        hdr = mk_frame(self.nvr_frame, bg=SURFACE3)
-        hdr.pack(fill="x", pady=(0, 2))
-        for txt, w in [("Name", 140), ("SKU", 120), ("Channels", 65), ("Max MB/s", 70),
-                       ("HDD Slots", 70), ("Price ($)", 85), ("Mode", 55), ("Brand", 90), ("", 80)]:
-            mk_label(hdr, txt, font=FONT_H3, fg=ACCENT, bg=SURFACE3, width=w//8, anchor="w").pack(
-                side="left", padx=8, pady=6)
-
         self.refresh_nvr_list_tab()
 
     def refresh_nvr_list_tab(self):
         for w in self.nvr_frame.winfo_children():
-            if w != self.nvr_frame.winfo_children()[0]:
-                w.destroy()
+            w.destroy()
         self.nvr_price_entries = []
 
         for i, n in enumerate(self.nvr_list):
@@ -681,24 +835,32 @@ class CCTVApp:
             row = mk_frame(self.nvr_frame, bg=row_bg)
             row.pack(fill="x", pady=1)
 
-            mk_label(row, n["Name"], bg=row_bg, fg=TEXT, width=18).pack(side="left", padx=(12,4), pady=4)
-            mk_label(row, n["SKU"], bg=row_bg, fg=TEXT2, font=FONT_MONO, width=14).pack(side="left", padx=4)
+            # Name
+            mk_label(row, n["Name"], bg=row_bg, fg=TEXT, width=22, anchor="w").pack(side="left", padx=(12,4), pady=4)
+            # SKU
+            mk_label(row, n["SKU"], bg=row_bg, fg=TEXT2, font=FONT_MONO, width=18, anchor="w").pack(side="left", padx=4)
+            # Channels
             mk_label(row, str(n["CH"]), bg=row_bg, fg=TEXT, width=8, anchor="center").pack(side="left", padx=4)
+            # Max MB/s
             mk_label(row, str(n["MB"]), bg=row_bg, fg=TEXT, width=8, anchor="center").pack(side="left", padx=4)
+            # HDD Slots
             mk_label(row, str(n["Slots"]), bg=row_bg, fg=TEXT, width=8, anchor="center").pack(side="left", padx=4)
 
+            # Price (editable)
             price_var = tk.StringVar(value=f"{n['Price']:.2f}")
             e = mk_entry(row, textvariable=price_var, width=10, bg=row_bg)
             e.pack(side="left", padx=4)
             self.nvr_price_entries.append(price_var)
 
-            mk_label(row, n.get("mode", "RAID"), bg=row_bg, fg=GOLD if n.get("mode")=="RAID" else ACCENT,
-                     width=7, anchor="center").pack(side="left", padx=4)
-            mk_label(row, n.get("brand", "American Dynamics"), bg=row_bg, fg=TEXT2,
-                     width=11, anchor="center").pack(side="left", padx=4)
+            # Mode
+            mode_color = GOLD if n.get("mode") == "RAID" else ACCENT
+            mk_label(row, n.get("mode", "RAID"), bg=row_bg, fg=mode_color, width=7, anchor="center").pack(side="left", padx=4)
+            
+            # Brand
+            mk_label(row, n.get("brand", "Tyco - American Dynamics"), bg=row_bg, fg=TEXT2, width=15, anchor="w").pack(side="left", padx=4)
 
-            mk_btn(row, "Delete", lambda idx=i: self.delete_nvr(idx), style="danger").pack(
-                side="right", padx=(4, 12))
+            # Delete button
+            mk_btn(row, "Delete", lambda idx=i: self.delete_nvr(idx), style="danger").pack(side="right", padx=(4, 12))
 
         save_row = mk_frame(self.nvr_frame, bg=SURFACE2)
         save_row.pack(fill="x", pady=8, padx=12)
@@ -915,7 +1077,6 @@ class CCTVApp:
             for j, b in enumerate(nvrs):
                 if i == j:
                     continue
-                # If b has better or equal specs and lower price, a is dominated
                 if (b["CH"] >= a["CH"] and 
                     b["MB"] >= a["MB"] and 
                     b["Slots"] >= a["Slots"] and
@@ -989,7 +1150,7 @@ class CCTVApp:
         self.res_txt.insert("end", msg, "error")
         self.res_txt.config(state="disabled")
 
-    # ── Excel Export ──────────────────────────────────────────────────────
+    # ── Excel Export with Brand Column (D) ────────────────────────────────
     def export_to_excel(self):
         if not self.last_calculation_result:
             messagebox.showwarning("Warning", "Run a calculation first before exporting!")
@@ -1048,24 +1209,34 @@ class CCTVApp:
                 sku = unit["nvr"]["SKU"]
                 hdd_cap = unit["hdd_config"]["cap"]
                 hdd_qty = unit["hdd_config"]["qty"]
-                key = (sku, hdd_cap, hdd_qty)
+                brand = unit["nvr"].get("brand", "Tyco - American Dynamics")
+                key = (sku, hdd_cap, hdd_qty, brand)
                 if key not in nvr_groups:
-                    nvr_groups[key] = {"sku": sku, "hdd_cap": hdd_cap, "hdd_qty": hdd_qty, "count": 1}
+                    nvr_groups[key] = {"sku": sku, "hdd_cap": hdd_cap, "hdd_qty": hdd_qty, "count": 1, "brand": brand}
                 else:
                     nvr_groups[key]["count"] += 1
 
             excel_rows = []
-            excel_rows.append(("", "", "", "", "", "header", "Cameras"))
+            # Cameras header
+            excel_rows.append(("", "", "", "", "", "", "header", "Cameras"))
+            
             for cam in cameras:
                 cam_name, cam_qty = cam[0], int(cam[1])
-                excel_rows.append((cam_name, cam_qty, "", "CCTV", "Camera", "data", ""))
-                excel_rows.append(("CAMLIC", 1, "ch", "CCTV", "Software", "data", ""))
-            excel_rows.append(("", "", "", "", "", "header", "NVRs"))
+                # Get camera brand from database
+                cam_brand = self.camera_db.get(cam_name, {}).get("brand", "")
+                excel_rows.append((cam_name, cam_qty, "", cam_brand, "CCTV", "Camera", "data", ""))
+                excel_rows.append(("CAMLIC", 1, "ch", "", "CCTV", "Software", "data", ""))
+            
+            # NVRs header
+            excel_rows.append(("", "", "", "", "", "", "header", "NVRs"))
+            
             for key, group in nvr_groups.items():
-                excel_rows.append((group["sku"], group["count"], "", "CCTV", "NVR", "data", ""))
-                excel_rows.append((f"{group['hdd_cap']}TB HDD", group["hdd_qty"], "ch", "CCTV", "HDD", "data", ""))
-            excel_rows.append(("", "", "", "", "", "header", "VMS"))
-            excel_rows.append(("VMS", 1, "", "CCTV", "Software", "data", ""))
+                excel_rows.append((group["sku"], group["count"], "", group["brand"], "CCTV", "NVR", "data", ""))
+                excel_rows.append((f"{group['hdd_cap']}TB HDD", group["hdd_qty"], "ch", "", "CCTV", "HDD", "data", ""))
+            
+            # VMS header
+            excel_rows.append(("", "", "", "", "", "", "header", "VMS"))
+            excel_rows.append(("VMS", 1, "", "", "CCTV", "Software", "data", ""))
 
             current_row = 9
             last_row = ws.used_range.last_cell.row
@@ -1074,7 +1245,7 @@ class CCTVApp:
                     ws.range(f"A{row}:M{row}").value = None
 
             for row_data in excel_rows:
-                part_no, qty, sys, solution, category, row_type, header_text = row_data
+                part_no, qty, sys, brand, solution, category, row_type, header_text = row_data
                 if row_type == "header":
                     ws.range(f"A{current_row}:M{current_row}").value = None
                     if header_text:
@@ -1090,6 +1261,8 @@ class CCTVApp:
                         ws.range(f"H{current_row}").value = qty
                     if sys:
                         ws.range(f"K{current_row}").value = sys
+                    if brand:
+                        ws.range(f"D{current_row}").value = brand
                     if solution:
                         ws.range(f"L{current_row}").value = solution
                     if category:
