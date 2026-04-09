@@ -4,7 +4,7 @@ CCTV Master Calculator - Optimized Multi-processing Version
 """
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
-import math, itertools, json, os, threading
+import math, itertools, json, os
 from datetime import datetime
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import threading
