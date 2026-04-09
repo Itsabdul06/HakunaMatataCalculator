@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """
-CCTV Master Calculator
-Rewrite of KantechCalc with improved GUI.
-Maintains all original functionality: camera entry, NVR management,
-HDD pricing, auto/manual calculation, report export to Excel.
+CCTV Master Calculator - Optimized Multi-processing Version
 """
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
-import math, itertools, json, os, threading
+import math, itertools, json, os
 from datetime import datetime
 from concurrent.futures import ProcessPoolExecutor, as_completed
+import threading
 
 # Try to import xlwings for Excel export
 try:
@@ -20,234 +18,6 @@ except ImportError:
 
 # ─────────────────────────── Persistence ───────────────────────────────────
 DATA_FILE = "system_data.json"
-# ================= HDD CACHE =================
-hdd_cache = {}
-
-def get_best_hdd_cached(required_tb, slots, parity, price_dict):
-    key = (round(required_tb, 4), slots, parity)
-    if key in hdd_cache:
-        return hdd_cache[key]
-
-    best_cost, best_cfg = float('inf'), None
-    for cap, price in price_dict.items():
-        if cap <= 0:
-            continue
-        drives_needed = math.ceil(required_tb / cap) + (parity if parity else 0)
-        if drives_needed > slots:
-            continue
-        drives_needed = max(drives_needed, parity + 1 if parity else 1)
-        cost = drives_needed * price
-        if cost < best_cost:
-            best_cost = cost
-            best_cfg = {
-                "cap": cap,
-                "qty": drives_needed,
-                "data": drives_needed - parity,
-                "cost": cost,
-                "total_capacity": drives_needed * cap
-            }
-
-    hdd_cache[key] = best_cfg
-    return best_cfg
-
-# ================= NVR DOMINATION FILTER =================
-def filter_dominated_nvrs(nvrs):
-    """Remove any NVR that is strictly worse than another on CH, MB, and Price."""
-    filtered = []
-    for a in nvrs:
-        dominated = any(
-            b is not a and
-            b["CH"] >= a["CH"] and
-            b["MB"] >= a["MB"] and
-            b["Slots"] >= a["Slots"] and
-            b["Price"] <= a["Price"]
-            for b in nvrs
-        )
-        if not dominated:
-            filtered.append(a)
-    return filtered
-
-# ================= GROUP-AWARE PARALLEL SOLVER =================
-#
-# KEY INSIGHT: cameras within the same type are interchangeable.
-# We never need to track *which* individual camera goes where —
-# only *how many* of each type go to each NVR.
-#
-# For N camera types and K NVRs the search space is:
-#   product over types of C(count_i + K, K-1)   [stars-and-bars per type]
-# which for typical inputs (2-3 types, 1-3 NVRs) is at most a few hundred
-# nodes — versus O(total_cams^K) for the flat-list approach.
-#
-# solve_combo_groups receives:
-#   groups   : list of (name, mbps_per_cam, storage_per_cam, count)
-#   nvrs     : ordered list of NVR dicts for this combo
-#   raid_mode: "JBOD" / "RAID 5" / "RAID 6"
-#   hdd_prices: dict {capacity_TB: price}
-
-def solve_combo_groups(args):
-    groups, nvrs, raid_mode, hdd_prices = args
-
-    n_nvrs  = len(nvrs)
-    n_types = len(groups)
-    parity  = 0 if raid_mode == "JBOD" else (1 if raid_mode == "RAID 5" else 2)
-
-    min_hdd_cost = min(hdd_prices.values())
-    nvr_costs    = [n["Price"] for n in nvrs]
-
-    # Best solution found so far
-    best_cost   = float('inf')
-    best_assign = None   # list of dicts: assign[nvr_idx][type_idx] = count
-
-    # assign[j] = list of per-type counts assigned to NVR j so far
-    assign = [[0] * n_types for _ in range(n_nvrs)]
-
-    # Running totals per NVR
-    nvr_ch = [0] * n_nvrs   # total cameras
-    nvr_bw = [0.0] * n_nvrs # total bandwidth Mbps
-    nvr_st = [0.0] * n_nvrs # total storage TB
-
-    def dfs(type_idx):
-        nonlocal best_cost, best_assign
-
-        if type_idx == n_types:
-            # All camera types distributed — evaluate
-            total = 0.0
-            result_units = []
-            for j, nvr in enumerate(nvrs):
-                if nvr_ch[j] == 0:
-                    continue  # empty NVR — invalid, each NVR must be used
-                if nvr_ch[j] > nvr["CH"] or nvr_bw[j] > nvr["MB"]:
-                    return
-                hdd = get_best_hdd_cached(nvr_st[j], nvr["Slots"], parity, hdd_prices)
-                if not hdd:
-                    return
-                c = nvr["Price"] + hdd["cost"]
-                total += c
-                # Build cam_breakdown for this NVR
-                breakdown = {}
-                for t, (name, _, _, _) in enumerate(groups):
-                    if assign[j][t] > 0:
-                        breakdown[name] = assign[j][t]
-                result_units.append({
-                    "nvr":            nvr,
-                    "camera_count":   nvr_ch[j],
-                    "cam_breakdown":  breakdown,
-                    "total_storage":  nvr_st[j],
-                    "total_bandwidth":nvr_bw[j],
-                    "hdd_config":     hdd,
-                    "cost":           c,
-                })
-            if total < best_cost:
-                best_cost   = total
-                best_assign = result_units
-            return
-
-        name, mbps, storage, count = groups[type_idx]
-
-        # Lower-bound: remaining NVRs cost at least their price + cheapest HDD
-        remaining_nvrs = n_nvrs - type_idx  # rough proxy
-        lower = sum(nvr_costs) + n_nvrs * min_hdd_cost
-        if lower >= best_cost:
-            return
-
-        # Distribute `count` cameras of this type across NVRs.
-        # We try all ways to partition count into n_nvrs non-negative parts
-        # (each NVR gets at least 0 of this type, the last gets the remainder).
-        def distribute(nvr_idx, remaining_count):
-            if nvr_idx == n_nvrs - 1:
-                # Last NVR gets whatever is left
-                k = remaining_count
-                # Early feasibility: would adding k cameras exceed this NVR's capacity?
-                if nvr_ch[nvr_idx] + k > nvrs[nvr_idx]["CH"]:
-                    return
-                if nvr_bw[nvr_idx] + k * mbps > nvrs[nvr_idx]["MB"]:
-                    return
-                assign[nvr_idx][type_idx]  = k
-                nvr_ch[nvr_idx] += k
-                nvr_bw[nvr_idx] += k * mbps
-                nvr_st[nvr_idx] += k * storage
-                dfs(type_idx + 1)
-                assign[nvr_idx][type_idx]  = 0
-                nvr_ch[nvr_idx] -= k
-                nvr_bw[nvr_idx] -= k * mbps
-                nvr_st[nvr_idx] -= k * storage
-                return
-
-            # Try giving k = 0..remaining_count cameras to nvr_idx
-            for k in range(remaining_count + 1):
-                if nvr_ch[nvr_idx] + k > nvrs[nvr_idx]["CH"]:
-                    break  # sorted: increasing k only makes it worse
-                if nvr_bw[nvr_idx] + k * mbps > nvrs[nvr_idx]["MB"]:
-                    break
-                assign[nvr_idx][type_idx]  = k
-                nvr_ch[nvr_idx] += k
-                nvr_bw[nvr_idx] += k * mbps
-                nvr_st[nvr_idx] += k * storage
-                distribute(nvr_idx + 1, remaining_count - k)
-                assign[nvr_idx][type_idx]  = 0
-                nvr_ch[nvr_idx] -= k
-                nvr_bw[nvr_idx] -= k * mbps
-                nvr_st[nvr_idx] -= k * storage
-
-        distribute(0, count)
-
-    dfs(0)
-    return best_assign, best_cost
-
-# ================= AUTO CALCULATE (top-level, called from worker thread) =================
-def auto_calculate_optimized(cameras, nvrs, raid_mode, hdd_prices):
-    """
-    cameras   : list of (name, count, mbps_per_cam, storage_per_cam)
-    nvrs      : full NVR list from app
-    raid_mode : "JBOD" / "RAID 5" / "RAID 6"
-    hdd_prices: {capacity_TB: price}
-    Returns   : list of result-unit dicts, or None
-    """
-    # Build camera groups — (name, mbps, storage, count)
-    groups = [(n, mb, st, c) for n, c, mb, st in cameras if c > 0]
-    total_cam = sum(g[3] for g in groups)
-    total_bw  = sum(g[1] * g[3] for g in groups)
-
-    # Filter and sort NVRs: cheapest first so pruning engages early
-    nvrs = filter_dominated_nvrs(nvrs)
-    nvrs = sorted(nvrs, key=lambda x: x["Price"])
-
-    # Build feasible combos
-    # Sort combos by estimated minimum cost (sum of NVR prices) so cheap combos
-    # are solved first, giving the branch-and-bound a tight upper bound quickly.
-    combos = []
-    max_nvrs = min(6, len(nvrs) + 1)
-    for k in range(1, max_nvrs):
-        for combo in itertools.combinations_with_replacement(nvrs, k):
-            if sum(n["CH"] for n in combo) < total_cam:
-                continue
-            if sum(n["MB"] for n in combo) < total_bw:
-                continue
-            combos.append(combo)
-
-    # Sort cheapest NVR-price combos first
-    combos.sort(key=lambda c: sum(n["Price"] for n in c))
-
-    best_res, best_cost = None, float('inf')
-
-    # Use threads (not processes) — avoids multiprocessing pickling overhead
-    # and works correctly with the module-level hdd_cache.
-    # For CPU-bound work this is normally worse than processes, but the
-    # group-based search is so fast per combo that IPC overhead dominates.
-    import concurrent.futures
-    with concurrent.futures.ThreadPoolExecutor() as ex:
-        futures = {
-            ex.submit(solve_combo_groups, (groups, list(combo), raid_mode, hdd_prices)): combo
-            for combo in combos
-        }
-        for f in concurrent.futures.as_completed(futures):
-            res, cost = f.result()
-            if res and cost < best_cost:
-                best_cost = cost
-                best_res  = res
-
-    return best_res
-
 
 DEFAULT_HDD_PRICES = {
     1: 87.0, 2: 131.0, 3: 145.0, 4: 239.0,
@@ -262,7 +32,6 @@ DEFAULT_NVR_DATA = [
     {"Name": "2U 128 Ch",      "SKU": "ADVER72R5N2H",   "CH": 128, "MB": 600,  "Slots": 12, "Price": 25000.0, "mode": "RAID",   "brand": "American Dynamics"},
     {"Name": "2U Rack 175 Ch", "SKU": "ADVER02RDK",     "CH": 175, "MB": 1000, "Slots": 12, "Price": 13854.2, "mode": "RAID",   "brand": "American Dynamics"},
     {"Name": "2U Rack 200 Ch", "SKU": "ADVER02RDK",     "CH": 200, "MB": 1500, "Slots": 12, "Price": 12812.5, "mode": "RAID",   "brand": "American Dynamics"},
-    {"Name": "1U JBOD",        "SKU": "ADVER00N0NP16G", "CH": 32,  "MB": 100,   "Slots": 4,  "Price": 3750.0,  "mode": "JBOD",   "brand": "American Dynamics"},
     {"Name": "Micro NVR",      "SKU": "ADVEM00N0NP8AH", "CH": 8,   "MB": 80,   "Slots": 1,  "Price": 1500.0,  "mode": "JBOD",   "brand": "American Dynamics"},
     {"Name": "Desktop JBOD",   "SKU": "ADVED00N0N5H",   "CH": 50,  "MB": 200,  "Slots": 2,  "Price": 2291.7,  "mode": "JBOD",   "brand": "American Dynamics"},
     {"Name": "2U 75 Ch",       "SKU": "ADVER00N0N2J",   "CH": 75,  "MB": 400,  "Slots": 4,  "Price": 5312.5,  "mode": "JBOD",   "brand": "American Dynamics"},
@@ -294,7 +63,185 @@ FONT_MONO = ("Consolas", 9)
 FONT_BTN  = ("Segoe UI", 9, "bold")
 FONT_LRGE = ("Segoe UI", 11, "bold")
 
-# ─────────────────────────── Core Logic ────────────────────────────────────
+# ================= OPTIMIZED HDD CACHE =================
+hdd_cache = {}
+
+def get_best_hdd_cached(required_tb, slots, parity, price_dict):
+    """Cached HDD calculation - critical for performance"""
+    key = (round(required_tb, 2), slots, parity)
+    if key in hdd_cache:
+        return hdd_cache[key]
+
+    best_cost, best_cfg = float('inf'), None
+    for cap, price in price_dict.items():
+        if cap <= 0:
+            continue
+
+        drives_needed = math.ceil(required_tb / cap)
+        if parity > 0:
+            drives_needed += parity
+        
+        if drives_needed > slots:
+            continue
+
+        drives_needed = max(drives_needed, parity + 1 if parity else 1)
+        cost = drives_needed * price
+
+        if cost < best_cost:
+            best_cost = cost
+            best_cfg = {
+                "cap": cap,
+                "qty": drives_needed,
+                "data": drives_needed - parity,
+                "cost": cost,
+                "total_capacity": drives_needed * cap
+            }
+
+    hdd_cache[key] = best_cfg
+    return best_cfg
+
+# ================= OPTIMIZED SOLVER =================
+def solve_combo(flat_cams, nvrs, raid_mode, hdd_prices):
+    """Optimized solver with pruning and early termination"""
+    
+    # Precompute prefix sums for O(1) range queries
+    total_cameras = len(flat_cams)
+    bw_prefix = [0] * (total_cameras + 1)
+    st_prefix = [0] * (total_cameras + 1)
+    
+    for i, (_, mbps, storage) in enumerate(flat_cams):
+        bw_prefix[i + 1] = bw_prefix[i] + mbps
+        st_prefix[i + 1] = st_prefix[i] + storage
+    
+    n_nvrs = len(nvrs)
+    parity = 0 if raid_mode == "JBOD" else (1 if raid_mode == "RAID 5" else 2)
+    
+    # Pre-calculate minimum possible cost for pruning
+    min_nvr_cost = min(n["Price"] for n in nvrs)
+    min_hdd_cost = min(hdd_prices.values())
+    
+    best_result = None
+    best_cost = float('inf')
+    
+    # Use iterative deepening with pruning
+    def dfs(idx, start, remaining, current_cost, assignment):
+        nonlocal best_result, best_cost
+        
+        # Prune if we can't beat best_cost
+        lower_bound = current_cost + (n_nvrs - idx) * (min_nvr_cost + min_hdd_cost)
+        if lower_bound >= best_cost:
+            return
+        
+        if idx == n_nvrs - 1:
+            # Last NVR takes all remaining
+            assignment.append(remaining)
+            
+            # Quick check: last NVR must be able to handle bandwidth
+            if start < total_cameras:
+                end = total_cameras
+                bw = bw_prefix[end] - bw_prefix[start]
+                if bw > nvrs[idx]["MB"]:
+                    assignment.pop()
+                    return
+            
+            # Build result
+            pos = 0
+            result = []
+            total = 0
+            valid = True
+            
+            for i, nvr in enumerate(nvrs):
+                take = assignment[i]
+                if take > 0:
+                    s, e = pos, pos + take
+                    bw = bw_prefix[e] - bw_prefix[s]
+                    st = st_prefix[e] - st_prefix[s]
+                    pos = e
+                    
+                    if take > nvr["CH"] or bw > nvr["MB"]:
+                        valid = False
+                        break
+                    
+                    hdd = get_best_hdd_cached(st, nvr["Slots"], parity, hdd_prices)
+                    if not hdd:
+                        valid = False
+                        break
+                    
+                    cost = nvr["Price"] + hdd["cost"]
+                    total += cost
+                    
+                    # Count camera types for display
+                    cam_counts = {}
+                    for j in range(s, e):
+                        name = flat_cams[j][0]
+                        cam_counts[name] = cam_counts.get(name, 0) + 1
+                    
+                    result.append({
+                        "nvr": nvr,
+                        "camera_count": take,
+                        "cam_breakdown": cam_counts,
+                        "total_storage": st,
+                        "total_bandwidth": bw,
+                        "hdd_config": hdd,
+                        "cost": cost
+                    })
+            
+            if valid and pos == total_cameras and total < best_cost:
+                best_cost = total
+                best_result = result
+            
+            assignment.pop()
+            return
+        
+        # Calculate realistic range for this NVR
+        nvr = nvrs[idx]
+        
+        # Max by channel
+        max_take = min(nvr["CH"], remaining - (n_nvrs - idx - 1))
+        
+        # Max by bandwidth (estimate using prefix sums)
+        if start < total_cameras:
+            # Binary search for max cameras this NVR can handle by bandwidth
+            low, high = 1, min(max_take, remaining)
+            max_by_bw = 0
+            while low <= high:
+                mid = (low + high) // 2
+                if start + mid <= total_cameras:
+                    bw = bw_prefix[start + mid] - bw_prefix[start]
+                    if bw <= nvr["MB"]:
+                        max_by_bw = mid
+                        low = mid + 1
+                    else:
+                        high = mid - 1
+                else:
+                    high = mid - 1
+            max_take = min(max_take, max_by_bw)
+        
+        # Min take: at least 1, and leave enough for remaining NVRs
+        min_take = max(1, remaining - (n_nvrs - idx - 1) * max(nvr["CH"] for nvr in nvrs[idx+1:]))
+        min_take = max(min_take, 1)
+        
+        if min_take > max_take:
+            return
+        
+        # Try from largest to smallest (finds cheaper solutions faster)
+        for take in range(max_take, min_take - 1, -1):
+            # Estimate cost for this branch
+            if start + take <= total_cameras:
+                st = st_prefix[start + take] - st_prefix[start]
+                hdd_est = get_best_hdd_cached(st, nvr["Slots"], parity, hdd_prices)
+                if hdd_est:
+                    est_cost = current_cost + nvr["Price"] + hdd_est["cost"]
+                    if est_cost >= best_cost:
+                        continue
+            
+            assignment.append(take)
+            dfs(idx + 1, start + take, remaining - take, 
+                current_cost + nvr["Price"], assignment)
+            assignment.pop()
+    
+    dfs(0, 0, total_cameras, 0, [])
+    return best_result, best_cost
 
 # ─────────────────────────── Widget Helpers ────────────────────────────────
 def mk_frame(parent, bg=SURFACE, **kw):
@@ -366,32 +313,7 @@ class CCTVApp:
                 pass
         self.hdd_prices = dict(DEFAULT_HDD_PRICES)
         self.nvr_list = [dict(n) for n in DEFAULT_NVR_DATA]
-        
-    def _finish_calc(self, result):
-        self.hide_progress()
 
-        if not result:
-            self.calc_status.config(text="No solution found", fg="red")
-            self._show_result_error("ERROR: No valid configuration found.\n\nTry adjusting camera counts or check NVR settings.")
-            return
-
-        # Build camera list from result for Excel export
-        cam_map = {}
-        for unit in result:
-            for name, cnt in unit.get("cam_breakdown", {}).items():
-                cam_map[name] = cam_map.get(name, 0) + cnt
-        cameras_list = [(n, c, 0, 0) for n, c in cam_map.items()]
-
-        self.last_calculation_result = {
-            "cameras":    cameras_list,
-            "nvr_config": result,
-            "raid_mode":  self.raid_var.get(),
-        }
-
-        self.display_results(result)
-        total_cost = sum(u["cost"] for u in result)
-        self.calc_status.config(text=f"Done — ${total_cost:,.2f}", fg="green")
-        
     def save_all_data(self):
         with open(DATA_FILE, "w") as f:
             json.dump({"hdd": self.hdd_prices, "nvr": self.nvr_list}, f, indent=2)
@@ -433,7 +355,7 @@ class CCTVApp:
         hdr = mk_frame(self.root, bg=BG)
         hdr.pack(fill="x", padx=24, pady=(18, 0))
         mk_label(hdr, "CCTV Master Calculator", font=FONT_H1, fg=WHITE, bg=BG).pack(side="left")
-        mk_label(hdr, "  v36.0", font=FONT_BODY, fg=TEXT3, bg=BG).pack(side="left", pady=(6, 0))
+        mk_label(hdr, "  v37.0", font=FONT_BODY, fg=TEXT3, bg=BG).pack(side="left", pady=(6, 0))
         sep(self.root).pack(fill="x", padx=24, pady=10)
 
         self.nb = ttk.Notebook(self.root, style="TNotebook")
@@ -876,83 +798,133 @@ class CCTVApp:
         self.save_all_data()
         messagebox.showinfo("Saved", "HDD Prices Updated.")
 
-    # ── CALCULATION LOGIC ──────────────────────────────────────────────────────
+    # ── MAIN CALCULATION LOGIC ────────────────────────────────────────────────
     def run_logic(self):
         camera_rows = [self.tree.item(i)["values"] for i in self.tree.get_children()]
         if not camera_rows:
             messagebox.showwarning("Warning", "Add cameras first.")
             return
-
+        
         cameras = []
         for row in camera_rows:
-            try:
-                name  = str(row[0]).strip()
-                count = int(row[1])
-                mbps  = float(row[2])
-                stor  = float(row[3])
-                if not name or count <= 0 or mbps <= 0 or stor <= 0:
-                    raise ValueError("Invalid camera data")
-                cameras.append((name, count, mbps, stor))
-            except (ValueError, IndexError) as e:
-                messagebox.showerror("Error", f"Invalid camera data: {e}")
-                return
-
-        self.calc_status.config(text="Calculating...", fg="#f59e0b")
+            cameras.append((row[0], int(row[1]), float(row[2]), float(row[3])))
+        
+        self.calc_status.config(text="Calculating...", fg=GOLD)
         self.show_progress()
-
-        if self.auto_mode.get() == "AUTO":
-            raid_mode  = self.raid_var.get()
-            hdd_prices = self.hdd_prices
-            brand      = self.brand_filter.get()
-
-            nvr_list = self.nvr_list
-            if brand != "All":
-                nvr_list = [n for n in nvr_list if n.get("brand", "") == brand]
-            if raid_mode == "JBOD":
-                compat = [n for n in nvr_list if n.get("mode", "RAID") == "JBOD"]
-            else:
-                compat = [n for n in nvr_list if n.get("mode", "RAID") == "RAID"]
-            if not compat:
-                compat = nvr_list
-
-            def worker():
-                try:
-                    result = auto_calculate_optimized(cameras, compat, raid_mode, hdd_prices)
-                    self.root.after(0, lambda r=result: self._finish_calc(r))
-                except Exception as e:
-                    import traceback; traceback.print_exc()
-                    self.root.after(0, lambda msg=str(e): messagebox.showerror("Error", msg))
-
-            threading.Thread(target=worker, daemon=True).start()
+        
+        def worker():
+            try:
+                result = self.auto_calculate_optimized(cameras)
+                self.root.after(0, lambda: self._finish_calc(result))
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                self.root.after(0, lambda: messagebox.showerror("Error", str(e)))
+        
+        threading.Thread(target=worker, daemon=True).start()
+    
+    def _finish_calc(self, result):
+        self.hide_progress()
+        
+        if not result:
+            self.calc_status.config(text="No solution found", fg=RED)
+            self._show_result_error("ERROR: No valid configuration found.\n\nPossible reasons:\n• HDD sizes cannot meet storage requirements\n• NVR channel/slot limits exceeded\n• No compatible NVRs available for selected RAID mode")
+            return
+        
+        self.last_calculation_result = {
+            "cameras": [self.tree.item(i)["values"] for i in self.tree.get_children()],
+            "nvr_config": result,
+            "raid_mode": self.raid_var.get()
+        }
+        
+        self.display_results(result)
+        total_cost = sum(u["cost"] for u in result)
+        self.calc_status.config(text=f"Done — Total: ${total_cost:,.2f}", fg=GREEN)
+    
+    def auto_calculate_optimized(self, cameras):
+        """Optimized auto-calculation with multiprocessing"""
+        # Filter by brand
+        brand = self.brand_filter.get()
+        if brand == "All":
+            available_nvrs = self.nvr_list.copy()
         else:
-            cameras_ref = cameras
-            def worker():
-                try:
-                    result = self.manual_calculate(cameras_ref)
-                    self.root.after(0, lambda r=result: self._finish_calc(r))
-                except Exception as e:
-                    import traceback; traceback.print_exc()
-                    self.root.after(0, lambda msg=str(e): messagebox.showerror("Error", msg))
-
-            threading.Thread(target=worker, daemon=True).start()
-
-    def manual_calculate(self, cameras):
-        """Manual mode: user picks specific NVRs, we find the optimal distribution."""
-        selected_nvrs = []
-        for combo in self.manual_combos:
-            nvr_name = combo.get()
-            if nvr_name != "None" and nvr_name:
-                nvr = next((n for n in self.nvr_list if n["Name"] == nvr_name), None)
-                if nvr:
-                    selected_nvrs.append(nvr)
-        if not selected_nvrs:
-            messagebox.showwarning("Warning", "Select at least one NVR.")
-            return None
-
-        groups    = [(n, mb, st, c) for n, c, mb, st in cameras if c > 0]
+            available_nvrs = [n for n in self.nvr_list if n.get("brand", "") == brand]
+        
+        # Filter by RAID compatibility
         raid_mode = self.raid_var.get()
-        result, _ = solve_combo_groups((groups, selected_nvrs, raid_mode, self.hdd_prices))
-        return result
+        compatible_nvrs = []
+        for nvr in available_nvrs:
+            nvr_mode = nvr.get("mode", "RAID")
+            if raid_mode == "JBOD" and nvr_mode == "JBOD":
+                compatible_nvrs.append(nvr)
+            elif raid_mode != "JBOD" and nvr_mode == "RAID":
+                compatible_nvrs.append(nvr)
+        
+        if not compatible_nvrs:
+            compatible_nvrs = available_nvrs
+        
+        # Remove dominated NVRs (cheaper and better specs)
+        compatible_nvrs = self.filter_dominated_nvrs(compatible_nvrs)
+        
+        # Flatten cameras
+        flat_cams = []
+        for name, count, mbps, storage in cameras:
+            for _ in range(count):
+                flat_cams.append((name, mbps, storage))
+        
+        total_cam = len(flat_cams)
+        total_bw = sum(x[1] for x in flat_cams)
+        
+        # Generate combinations to test
+        combos_to_test = []
+        for k in range(1, min(5, len(compatible_nvrs) + 2)):
+            for combo in itertools.combinations_with_replacement(compatible_nvrs, k):
+                if sum(n["CH"] for n in combo) < total_cam:
+                    continue
+                if sum(n["MB"] for n in combo) < total_bw:
+                    continue
+                combos_to_test.append((flat_cams.copy(), list(combo), raid_mode, self.hdd_prices))
+        
+        if not combos_to_test:
+            return None
+        
+        # Process in parallel
+        best_result = None
+        best_cost = float('inf')
+        
+        # Use fewer processes to avoid overhead
+        with ProcessPoolExecutor(max_workers=min(4, len(combos_to_test))) as executor:
+            futures = {executor.submit(solve_combo, *c): c for c in combos_to_test}
+            
+            for future in as_completed(futures):
+                try:
+                    res, cost = future.result()
+                    if res and cost < best_cost:
+                        best_cost = cost
+                        best_result = res
+                except Exception as e:
+                    print(f"Error processing combo: {e}")
+        
+        return best_result
+    
+    def filter_dominated_nvrs(self, nvrs):
+        """Remove NVRs that are strictly worse than another (cheaper and better specs)"""
+        filtered = []
+        for i, a in enumerate(nvrs):
+            dominated = False
+            for j, b in enumerate(nvrs):
+                if i == j:
+                    continue
+                # If b has better or equal specs and lower price, a is dominated
+                if (b["CH"] >= a["CH"] and 
+                    b["MB"] >= a["MB"] and 
+                    b["Slots"] >= a["Slots"] and
+                    b["Price"] <= a["Price"]):
+                    dominated = True
+                    break
+            if not dominated:
+                filtered.append(a)
+        return filtered
 
     def display_results(self, result):
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -984,7 +956,7 @@ class CCTVApp:
             
             write(f"  Cameras:  ", "label")
             write(f"{u['camera_count']} total  ", "value")
-            if u["cam_breakdown"]:
+            if u.get("cam_breakdown"):
                 parts = ",  ".join(f"{n}: {c}" for n, c in u["cam_breakdown"].items())
                 write(f"({parts})\n", "value")
             else:
@@ -1142,7 +1114,7 @@ class CCTVApp:
 if __name__ == "__main__":
     import multiprocessing
     multiprocessing.freeze_support()
-
+    
     root = tk.Tk()
-    app = CCTVApp(root)  # your original class
+    app = CCTVApp(root)
     root.mainloop()
