@@ -1409,7 +1409,7 @@ class CCTVApp:
                 cam_sku = self.camera_db.get(cam_name, {}).get("sku", cam_name)
                 cam_brand = self.camera_db.get(cam_name, {}).get("brand", "")
                 excel_rows.append((cam_sku, cam_qty, "", cam_brand, "CCTV", "Camera", "data", "", None))
-                excel_rows.append(("CAMLIC", 1, "ch", "", "CCTV", "Software", "data", "", None))
+                excel_rows.append(("ADVEC01", 1, "ch", "", "Tyco - American Dynamics","CCTV", "Software", "data", "", None))
             
             # NVRs header
             excel_rows.append(("", "", "", "", "", "", "header", "NVRs", None))
@@ -1420,7 +1420,7 @@ class CCTVApp:
             
             # VMS header
             excel_rows.append(("", "", "", "", "", "", "header", "VMS", None))
-            excel_rows.append(("VMS", 1, "", "", "CCTV", "Software", "data", "", None))
+            excel_rows.append(("ADVASC01", 1, "", "", "CCTV", "Software", "data", "", None))
 
             current_row = 9
             
