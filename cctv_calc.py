@@ -1158,13 +1158,13 @@ class CCTVApp:
         if not EXCEL_AVAILABLE:
             messagebox.showerror("Error", "Excel export requires xlwings.\nInstall: pip install xlwings")
             return
-
+    
         template_file = filedialog.askopenfilename(
             title="Select Excel Template",
             filetypes=[("Excel files", "*.xlsx")])
         if not template_file:
             return
-
+    
         save_option = messagebox.askyesno("Save Option",
             "Yes = Save as new file\nNo = Overwrite template")
         output_file = template_file
@@ -1174,7 +1174,7 @@ class CCTVApp:
                 initialfile=f"CCTV_Quote_{datetime.now().strftime('%Y%m%d_%H%M')}")
             if not output_file:
                 return
-
+    
         progress_msg = tk.Toplevel(self.root)
         progress_msg.title("Exporting...")
         progress_msg.configure(bg=SURFACE)
@@ -1184,13 +1184,13 @@ class CCTVApp:
         mk_label(progress_msg, "Exporting to Excel...",
                 font=FONT_H2, fg=ACCENT, bg=SURFACE).pack(pady=(20, 10))
         self.root.update()
-
+    
         app = None
         wb = None
         try:
             app = xw.App(visible=False, add_book=False)
             wb = app.books.open(template_file)
-
+    
             sheet_name = None
             for name in wb.sheet_names:
                 if name.lower() == "offer":
@@ -1198,11 +1198,11 @@ class CCTVApp:
                     break
             if not sheet_name:
                 raise Exception("Sheet 'offer' not found!")
-
+    
             ws = wb.sheets[sheet_name]
             cameras = self.last_calculation_result["cameras"]
             nvr_config = self.last_calculation_result["nvr_config"]
-
+    
             # Group identical NVRs
             nvr_groups = {}
             for unit in nvr_config:
@@ -1215,39 +1215,56 @@ class CCTVApp:
                     nvr_groups[key] = {"sku": sku, "hdd_cap": hdd_cap, "hdd_qty": hdd_qty, "count": 1, "brand": brand}
                 else:
                     nvr_groups[key]["count"] += 1
-
+    
+            # Prepare data rows
             excel_rows = []
+            
             # Cameras header
-            excel_rows.append(("", "", "", "", "", "", "header", "Cameras"))
+            excel_rows.append(("", "", "", "", "", "", "header", "Cameras", None))
             
             for cam in cameras:
-                cam_name, cam_qty = cam[0], int(cam[1])
-                # Get camera brand from database
+                cam_name = cam[0]
+                cam_qty = int(cam[1])
+                # Get camera SKU from database (use the name to look up)
+                cam_sku = self.camera_db.get(cam_name, {}).get("sku", cam_name)
                 cam_brand = self.camera_db.get(cam_name, {}).get("brand", "")
-                excel_rows.append((cam_name, cam_qty, "", cam_brand, "CCTV", "Camera", "data", ""))
-                excel_rows.append(("CAMLIC", 1, "ch", "", "CCTV", "Software", "data", ""))
+                # Camera row - SKU goes to Column F
+                excel_rows.append((cam_sku, cam_qty, "", cam_brand, "CCTV", "Camera", "data", "", None))
+                # CAMLIC row
+                excel_rows.append(("CAMLIC", 1, "ch", "", "CCTV", "Software", "data", "", None))
             
             # NVRs header
-            excel_rows.append(("", "", "", "", "", "", "header", "NVRs"))
+            excel_rows.append(("", "", "", "", "", "", "header", "NVRs", None))
             
             for key, group in nvr_groups.items():
-                excel_rows.append((group["sku"], group["count"], "", group["brand"], "CCTV", "NVR", "data", ""))
-                excel_rows.append((f"{group['hdd_cap']}TB HDD", group["hdd_qty"], "ch", "", "CCTV", "HDD", "data", ""))
+                # NVR row - SKU to Column F
+                excel_rows.append((group["sku"], group["count"], "", group["brand"], "CCTV", "NVR", "data", "", None))
+                # HDD row
+                excel_rows.append((f"{group['hdd_cap']}TB HDD", group["hdd_qty"], "ch", "", "CCTV", "HDD", "data", "", None))
             
             # VMS header
-            excel_rows.append(("", "", "", "", "", "", "header", "VMS"))
-            excel_rows.append(("VMS", 1, "", "", "CCTV", "Software", "data", ""))
-
+            excel_rows.append(("", "", "", "", "", "", "header", "VMS", None))
+            excel_rows.append(("VMS", 1, "", "", "CCTV", "Software", "data", "", None))
+    
             current_row = 9
-            last_row = ws.used_range.last_cell.row
-            if last_row >= current_row:
-                for row in range(current_row, last_row + 1):
-                    ws.range(f"A{row}:M{row}").value = None
-
+            
+            # Track which rows are headers to only clear those
+            header_rows = []
+            row_counter = current_row
             for row_data in excel_rows:
-                part_no, qty, sys, brand, solution, category, row_type, header_text = row_data
+                if row_data[6] == "header":  # row_type is at index 6
+                    header_rows.append(row_counter)
+                row_counter += 1
+            
+            # ONLY clear the header rows (not every row)
+            for row in header_rows:
+                ws.range(f"A{row}:M{row}").value = None
+    
+            # Write new data
+            for row_data in excel_rows:
+                part_no, qty, sys, brand, solution, category, row_type, header_text, _ = row_data
+                
                 if row_type == "header":
-                    ws.range(f"A{current_row}:M{current_row}").value = None
                     if header_text:
                         ws.range(f"G{current_row}").value = header_text
                     try:
@@ -1255,6 +1272,7 @@ class CCTVApp:
                     except:
                         pass
                 else:
+                    # Data rows - write to specific columns
                     if part_no:
                         ws.range(f"F{current_row}").value = part_no
                     if qty:
@@ -1267,14 +1285,15 @@ class CCTVApp:
                         ws.range(f"L{current_row}").value = solution
                     if category:
                         ws.range(f"M{current_row}").value = category
+                
                 current_row += 1
-
+    
             wb.save(output_file)
             wb.close()
             app.quit()
             progress_msg.destroy()
             messagebox.showinfo("Success", f"Exported to {os.path.basename(output_file)}")
-
+    
         except Exception as e:
             progress_msg.destroy()
             if app:
