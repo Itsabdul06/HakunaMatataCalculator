@@ -40,6 +40,8 @@ DEFAULT_NVR_DATA = [
     {"Name": "2U 75 Ch",       "SKU": "ADVER00N0N2J",   "CH": 75,  "MB": 400,  "Slots": 4,  "Price": 5312.5,  "mode": "JBOD",   "brand": "Tyco - American Dynamics"},
     {"Name": "Holis 8 Ch",     "SKU": "HRN-08013P",     "CH": 8,   "MB": 160,  "Slots": 1,  "Price": 520.85,  "mode": "JBOD",   "brand": "Tyco - Holis"},
     {"Name": "Holis 16 Ch",    "SKU": "HRN-16023P",     "CH": 16,  "MB": 320,  "Slots": 2,  "Price": 770.85,  "mode": "JBOD",   "brand": "Tyco - Holis"},
+    {"Name": "Exacq 1U",       "SKU": "EXQ-1U-001",     "CH": 32,  "MB": 100,  "Slots": 4,  "Price": 3200.0,  "mode": "RAID",   "brand": "Exacq"},
+    {"Name": "Exacq 2U",       "SKU": "EXQ-2U-001",     "CH": 64,  "MB": 200,  "Slots": 8,  "Price": 5500.0,  "mode": "RAID",   "brand": "Exacq"},
 ]
 
 # ─────────────────────────── Colors & Fonts ────────────────────────────────
@@ -269,17 +271,6 @@ def load_camera_database():
         print(f"Error parsing Cameras_JSON.json: {e}")
         return {}
 
-def save_camera_database(db):
-    """Save camera database to JSON file"""
-    try:
-        json_path = os.path.join(get_resource_path(), "Cameras_JSON.json")
-        with open(json_path, 'w', encoding='utf-8') as f:
-            json.dump(db, f, indent=2, ensure_ascii=False)
-        return True
-    except Exception as e:
-        print(f"Error saving camera database: {e}")
-        return False
-
 # Calculate storage in TB per camera
 def calculate_storage_tb(mbps, days):
     """Calculate storage in TB per camera for given Mbps and retention days"""
@@ -352,9 +343,6 @@ class CCTVApp:
         self.retention_days = tk.StringVar(value="30")
         self.calculated_mbps = tk.StringVar(value="0.00")
         self.calculated_storage = tk.StringVar(value="0.00")
-        
-        # Custom camera variables
-        self.custom_vars = {}
         
         # Bind trace to update Mbps and Storage when selections change
         self.selected_camera.trace('w', self.update_codec_dropdown)
@@ -440,7 +428,7 @@ class CCTVApp:
         self._build_nvr_tab(self.tabs[2])
         self._build_hdd_tab(self.tabs[3])
 
-    # ── Tab 1: Cameras (Database + Manual Entry) ────────────────────────────
+    # ── Tab 1: Cameras (Database only) ────────────────────────────────────
     def populate_camera_dropdown(self):
         """Populate camera dropdown with names from database"""
         camera_names = sorted(self.camera_db.keys())
@@ -536,83 +524,49 @@ class CCTVApp:
         except ValueError as e:
             messagebox.showerror("Error", f"Invalid input: {e}")
     
-    def add_custom_camera(self):
-        """Add a manually entered camera to the tree"""
+    def update_selected_camera(self):
+        """Update the selected camera in the tree with current values"""
+        sel = self.tree.selection()
+        if not sel:
+            messagebox.showwarning("Warning", "Please select a camera to update.")
+            return
+        
         try:
-            name = self.custom_vars["custom_name"].get().strip()
-            if not name:
-                raise ValueError("Camera name is required")
+            camera_name = self.selected_camera.get()
+            if not camera_name or camera_name == "No cameras found":
+                messagebox.showerror("Error", "Please select a valid camera model.")
+                return
             
-            sku = self.custom_vars["custom_sku"].get().strip()
-            if not sku:
-                sku = name
+            quantity = self.camera_quantity.get().strip()
+            if not quantity:
+                raise ValueError("Quantity cannot be empty")
             
-            brand = self.custom_vars["custom_brand"].get().strip()
-            if not brand:
-                brand = "Custom"
-            
-            mbps_str = self.custom_vars["custom_mbps"].get().strip()
-            if not mbps_str:
-                raise ValueError("Mbps is required")
-            mbps = float(mbps_str)
+            mbps = float(self.calculated_mbps.get())
             if mbps <= 0:
-                raise ValueError("Mbps must be positive")
+                raise ValueError("Invalid Mbps value")
             
-            storage_str = self.custom_vars["custom_storage"].get().strip()
-            if not storage_str:
-                raise ValueError("Storage TB/cam is required")
-            storage = float(storage_str)
-            if storage <= 0:
-                raise ValueError("Storage must be positive")
+            storage_tb = float(self.calculated_storage.get())
+            if storage_tb <= 0:
+                raise ValueError("Invalid storage value")
             
-            quantity_str = self.custom_vars["custom_quantity"].get().strip()
-            if not quantity_str:
-                raise ValueError("Quantity is required")
-            quantity = int(quantity_str)
-            if quantity <= 0:
+            qty = int(quantity)
+            if qty <= 0:
                 raise ValueError("Quantity must be positive")
             
-            # Add to tree
-            tag = "even" if len(self.tree.get_children()) % 2 == 0 else "odd"
-            self.tree.insert("", "end", values=(name, quantity, f"{mbps:.2f}", f"{storage:.2f}"), tags=(tag,))
-            
-            # Optionally add to database
-            if self.add_to_database.get():
-                if name not in self.camera_db:
-                    self.camera_db[name] = {
-                        "sku": sku,
-                        "brand": brand,
-                        "resolution": "Custom",
-                        "throughputs": {
-                            "Custom": {
-                                "1fps": mbps
-                            }
-                        }
-                    }
-                    save_camera_database(self.camera_db)
-                    self.populate_camera_dropdown()
-                    messagebox.showinfo("Success", f"Camera '{name}' added to database.")
-                else:
-                    messagebox.showwarning("Warning", f"Camera '{name}' already exists in database. Not added.")
-            
-            # Clear custom fields
-            for key in self.custom_vars:
-                self.custom_vars[key].set("")
-            self.add_to_database.set(False)
-            
+            # Update the selected item
+            tag = "even" if self.tree.index(sel[0]) % 2 == 0 else "odd"
+            self.tree.item(sel[0], values=(camera_name, qty, f"{mbps:.2f}", f"{storage_tb:.2f}"), tags=(tag,))
             self.refresh_nvr_dropdowns()
             
         except ValueError as e:
             messagebox.showerror("Error", f"Invalid input: {e}")
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to add camera: {e}")
     
     def _build_cameras_tab(self, tab):
         tab.columnconfigure(0, weight=1)
-        tab.rowconfigure(4, weight=1)
+        tab.rowconfigure(2, weight=1)
 
         # ─────────────────────────────────────────────────────────────────────
-        # SECTION 1: Add Camera from Database
+        # SECTION: Add Camera from Database
         # ─────────────────────────────────────────────────────────────────────
         db_frame = mk_frame(tab, bg=SURFACE)
         db_frame.grid(row=0, column=0, sticky="ew", padx=16, pady=(14, 5))
@@ -661,58 +615,18 @@ class CCTVApp:
         # Buttons for database section
         db_btn_f = mk_frame(db_frame, bg=SURFACE)
         db_btn_f.grid(row=8, column=0, columnspan=4, pady=(10, 0))
-        mk_btn(db_btn_f, "Add Camera from DB", self.add_camera_from_database, style="primary").pack(side="left", padx=(0, 6))
+        mk_btn(db_btn_f, "Add Camera", self.add_camera_from_database, style="primary").pack(side="left", padx=(0, 6))
+        mk_btn(db_btn_f, "Update Selected", self.update_selected_camera, style="ghost").pack(side="left", padx=(0, 6))
+        mk_btn(db_btn_f, "Delete Selected", self.delete_camera, style="danger").pack(side="left")
 
         sep1 = mk_frame(tab, bg=BORDER, height=2)
         sep1.grid(row=1, column=0, sticky="ew", padx=16, pady=10)
 
         # ─────────────────────────────────────────────────────────────────────
-        # SECTION 2: Add Custom Camera (Manual Entry)
-        # ─────────────────────────────────────────────────────────────────────
-        custom_frame = mk_frame(tab, bg=SURFACE)
-        custom_frame.grid(row=2, column=0, sticky="ew", padx=16, pady=(5, 14))
-
-        mk_label(custom_frame, "Add Custom Camera (Manual Entry)", font=FONT_H2, fg=ACCENT, bg=SURFACE).grid(
-            row=0, column=0, columnspan=10, sticky="w", padx=14, pady=(10, 8))
-
-        custom_fields = [
-            ("Camera Name:", "custom_name", 25),
-            ("SKU (Part No.):", "custom_sku", 20),
-            ("Brand:", "custom_brand", 25),
-            ("Mbps:", "custom_mbps", 10),
-            ("Storage TB/cam:", "custom_storage", 10),
-            ("Quantity:", "custom_quantity", 10),
-        ]
-        
-        for i, (label, key, width) in enumerate(custom_fields):
-            mk_label(custom_frame, label, bg=SURFACE, fg=TEXT2).grid(row=i+1, column=0, sticky="w", padx=(14, 5), pady=5)
-            var = tk.StringVar()
-            e = mk_entry(custom_frame, textvariable=var, width=width)
-            e.grid(row=i+1, column=1, sticky="w", padx=(0, 10), pady=5)
-            self.custom_vars[key] = var
-        
-        # Option to add to database checkbox
-        self.add_to_database = tk.BooleanVar(value=False)
-        add_to_db_check = tk.Checkbutton(custom_frame, text="Add this camera to database (for future use)", 
-                                          variable=self.add_to_database,
-                                          bg=SURFACE, fg=TEXT2, selectcolor=SURFACE2,
-                                          activebackground=SURFACE, activeforeground=TEXT,
-                                          font=FONT_BODY)
-        add_to_db_check.grid(row=len(custom_fields)+1, column=0, columnspan=2, sticky="w", padx=(14, 5), pady=5)
-        
-        # Buttons for custom section
-        custom_btn_f = mk_frame(custom_frame, bg=SURFACE)
-        custom_btn_f.grid(row=len(custom_fields)+2, column=0, columnspan=2, pady=(10, 0))
-        mk_btn(custom_btn_f, "Add Custom Camera", self.add_custom_camera, style="primary").pack(side="left", padx=(0, 6))
-
-        sep2 = mk_frame(tab, bg=BORDER, height=2)
-        sep2.grid(row=3, column=0, sticky="ew", padx=16, pady=10)
-
-        # ─────────────────────────────────────────────────────────────────────
         # Camera Tree
         # ─────────────────────────────────────────────────────────────────────
         tree_f = mk_frame(tab, bg=SURFACE2)
-        tree_f.grid(row=4, column=0, sticky="nsew", padx=16, pady=14)
+        tree_f.grid(row=2, column=0, sticky="nsew", padx=16, pady=14)
         tree_f.columnconfigure(0, weight=1)
         tree_f.rowconfigure(0, weight=1)
 
@@ -730,17 +644,23 @@ class CCTVApp:
         self.tree.grid(row=0, column=0, sticky="nsew")
         vsb.grid(row=0, column=1, sticky="ns")
 
-        # Delete selected button for the tree
-        tree_btn_f = mk_frame(tree_f, bg=SURFACE2)
-        tree_btn_f.grid(row=1, column=0, pady=10)
-        mk_btn(tree_btn_f, "Delete Selected Camera", self.delete_camera, style="danger").pack()
-
         self.tree.bind("<<TreeviewSelect>>", self._on_cam_select)
 
     def _on_cam_select(self, event):
         sel = self.tree.selection()
-        if not sel: return
-        # Just keep selection, don't populate inputs
+        if not sel: 
+            return
+        # Populate the dropdowns with the selected camera's values
+        vals = self.tree.item(sel[0])["values"]
+        if vals:
+            # Find the camera in the database to set codec and FPS
+            camera_name = vals[0]
+            if camera_name in self.camera_db:
+                self.selected_camera.set(camera_name)
+                # The trace will automatically update codec and FPS dropdowns
+                # Then we need to set quantity
+                self.camera_quantity.set(str(vals[1]))
+                # Mbps and storage will auto-update from the selections
 
     def delete_camera(self):
         for s in self.tree.selection():
@@ -785,7 +705,7 @@ class CCTVApp:
         mk_label(row2, "NVR Brand:", bg=SURFACE, fg=TEXT2).pack(side="left", padx=(0, 6))
         self.brand_filter = tk.StringVar(value="All")
         brand_combo = ttk.Combobox(row2, textvariable=self.brand_filter, width=25,
-                                   state="readonly", values=["All", "Tyco - American Dynamics", "Tyco - Holis"])
+                                   state="readonly", values=["All", "Tyco - American Dynamics", "Tyco - Holis", "Exacq"])
         brand_combo.bind("<<ComboboxSelected>>", lambda x: self.refresh_nvr_dropdowns())
         brand_combo.pack(side="left")
         mk_label(row2, "(Filters NVRs shown below)", bg=SURFACE, fg=TEXT3, font=FONT_BODY).pack(side="left", padx=(10, 0))
@@ -916,24 +836,21 @@ class CCTVApp:
         self.nf_brand = tk.StringVar(value="Tyco - American Dynamics")
         mk_label(add_f, "Brand:", bg=SURFACE, fg=TEXT2).grid(row=1, column=14, sticky="w", padx=(6, 3))
         ttk.Combobox(add_f, textvariable=self.nf_brand, width=20,
-                     state="readonly", values=["Tyco - American Dynamics", "Tyco - Holis"]).grid(row=1, column=15, padx=(0, 6), pady=(0, 10))
+                     state="readonly", values=["Tyco - American Dynamics", "Tyco - Holis", "Exacq"]).grid(row=1, column=15, padx=(0, 6), pady=(0, 10))
         
         mk_btn(add_f, "ADD TO DATABASE", self.add_new_nvr, style="primary").grid(
             row=1, column=16, padx=(6, 14), pady=(0, 10))
         
-        # Delete button for selected NVR
         mk_btn(add_f, "DELETE SELECTED", self._delete_nvr_from_tree, style="danger").grid(
             row=1, column=17, padx=(6, 14), pady=(0, 10))
 
         sep(tab).grid(row=0, column=0, sticky="ew", padx=16)
 
-        # Create a frame for the NVR list with Treeview
         list_frame = mk_frame(tab, bg=SURFACE2)
         list_frame.grid(row=1, column=0, sticky="nsew", padx=16, pady=14)
         list_frame.columnconfigure(0, weight=1)
         list_frame.rowconfigure(0, weight=1)
 
-        # Create Treeview for NVR list
         columns = ("Name", "SKU", "Channels", "Bandwidth", "Slots", "Price", "Mode", "Brand")
         self.nvr_tree = ttk.Treeview(list_frame, columns=columns, show="headings", height=15)
         
@@ -952,7 +869,6 @@ class CCTVApp:
             self.nvr_tree.heading(col, text=col)
             self.nvr_tree.column(col, width=width, anchor=anchor)
         
-        # Add scrollbars
         vsb = ttk.Scrollbar(list_frame, orient="vertical", command=self.nvr_tree.yview)
         hsb = ttk.Scrollbar(list_frame, orient="horizontal", command=self.nvr_tree.xview)
         self.nvr_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
@@ -961,13 +877,11 @@ class CCTVApp:
         vsb.grid(row=0, column=1, sticky="ns")
         hsb.grid(row=1, column=0, sticky="ew")
         
-        # Bind double-click to edit price
         self.nvr_tree.bind("<Double-1>", self._on_nvr_double_click)
         
         self.refresh_nvr_list_tab()
 
     def refresh_nvr_list_tab(self):
-        """Refresh the NVR list in the treeview"""
         for item in self.nvr_tree.get_children():
             self.nvr_tree.delete(item)
         
@@ -990,7 +904,6 @@ class CCTVApp:
         self.nvr_tree.tag_configure("even", background=SURFACE2)
 
     def _on_nvr_double_click(self, event):
-        """Handle double-click on NVR row to edit price"""
         item = self.nvr_tree.selection()[0] if self.nvr_tree.selection() else None
         if not item:
             return
@@ -1041,7 +954,6 @@ class CCTVApp:
         mk_btn(btn_frame, "Cancel", edit_window.destroy, style="ghost").pack(side="left", padx=5)
 
     def _delete_nvr_from_tree(self):
-        """Delete the selected NVR from the treeview"""
         selected = self.nvr_tree.selection()
         if not selected:
             messagebox.showwarning("Warning", "Please select an NVR to delete.")
@@ -1095,7 +1007,6 @@ class CCTVApp:
             self.refresh_nvr_dropdowns()
             self.refresh_nvr_list_tab()
             
-            # Clear input fields
             for f in self.nf.values():
                 f.set("")
             self.na.set("RAID")
@@ -1189,7 +1100,6 @@ class CCTVApp:
         self.calc_status.config(text=f"Done — Total: ${total_cost:,.2f}", fg=GREEN)
     
     def auto_calculate_optimized(self, cameras):
-        """Optimized auto-calculation with multiprocessing"""
         brand = self.brand_filter.get()
         if brand == "All":
             available_nvrs = self.nvr_list.copy()
@@ -1208,10 +1118,8 @@ class CCTVApp:
         if not compatible_nvrs:
             compatible_nvrs = available_nvrs
         
-        # Remove dominated NVRs
         compatible_nvrs = self.filter_dominated_nvrs(compatible_nvrs)
         
-        # Flatten cameras
         flat_cams = []
         for name, count, mbps, storage in cameras:
             for _ in range(count):
@@ -1220,7 +1128,6 @@ class CCTVApp:
         total_cam = len(flat_cams)
         total_bw = sum(x[1] for x in flat_cams)
         
-        # Generate combinations
         combos_to_test = []
         for k in range(1, min(5, len(compatible_nvrs) + 2)):
             for combo in itertools.combinations_with_replacement(compatible_nvrs, k):
@@ -1251,7 +1158,6 @@ class CCTVApp:
         return best_result
     
     def filter_dominated_nvrs(self, nvrs):
-        """Remove NVRs that are strictly worse than another"""
         filtered = []
         for i, a in enumerate(nvrs):
             dominated = False
@@ -1331,7 +1237,7 @@ class CCTVApp:
         self.res_txt.insert("end", msg, "error")
         self.res_txt.config(state="disabled")
 
-    # ── Excel Export with Brand Column (D) ────────────────────────────────
+    # ── Excel Export ──────────────────────────────────────────────────────
     def export_to_excel(self):
         if not self.last_calculation_result:
             messagebox.showwarning("Warning", "Run a calculation first before exporting!")
@@ -1409,7 +1315,8 @@ class CCTVApp:
                 cam_sku = self.camera_db.get(cam_name, {}).get("sku", cam_name)
                 cam_brand = self.camera_db.get(cam_name, {}).get("brand", "")
                 excel_rows.append((cam_sku, cam_qty, "", cam_brand, "CCTV", "Camera", "data", "", None))
-                excel_rows.append(("ADVEC01", 1, "ch", "", "Tyco - American Dynamics","CCTV", "Software", "data", "", None))
+                # CAMLIC row with brand
+                excel_rows.append(("ADVEC01", 1, "ch", "Tyco - American Dynamics", "CCTV", "Software", "data", "", None))
             
             # NVRs header
             excel_rows.append(("", "", "", "", "", "", "header", "NVRs", None))
@@ -1420,7 +1327,8 @@ class CCTVApp:
             
             # VMS header
             excel_rows.append(("", "", "", "", "", "", "header", "VMS", None))
-            excel_rows.append(("ADVASC01", 1, "", "", "CCTV", "Software", "data", "", None))
+            # VMS row with brand
+            excel_rows.append(("ADVASC01", 1, "", "Tyco - American Dynamics", "CCTV", "Software", "data", "", None))
 
             current_row = 9
             
