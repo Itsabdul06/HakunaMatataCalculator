@@ -758,12 +758,12 @@ class CCTVApp:
     def _build_nvr_tab(self, tab):
         tab.columnconfigure(0, weight=1)
         tab.rowconfigure(1, weight=1)
-
+    
         add_f = mk_frame(tab, bg=SURFACE)
         add_f.grid(row=0, column=0, sticky="ew", padx=16, pady=14)
         mk_label(add_f, "Add New NVR Model", font=FONT_H2, fg=ACCENT, bg=SURFACE).grid(
             row=0, column=0, columnspan=16, sticky="w", padx=14, pady=(10, 8))
-
+    
         self.nf = {}
         fields = [("Name", 14), ("SKU", 14), ("CH", 6), ("MB", 6), ("Slots", 6), ("Price", 8)]
         for col, (f, w) in enumerate(fields):
@@ -772,7 +772,7 @@ class CCTVApp:
             e = mk_entry(add_f, textvariable=var, width=w)
             e.grid(row=1, column=col*2+1, padx=(0, 2), pady=(0, 10))
             self.nf[f] = var
-
+    
         self.na = tk.StringVar(value="RAID")
         mk_label(add_f, "RAID/JBOD", bg=SURFACE, fg=TEXT2).grid(row=1, column=12, sticky="w", padx=(6, 3))
         ttk.Combobox(add_f, textvariable=self.na, width=7,
@@ -785,88 +785,182 @@ class CCTVApp:
         
         mk_btn(add_f, "ADD TO DATABASE", self.add_new_nvr, style="primary").grid(
             row=1, column=16, padx=(6, 14), pady=(0, 10))
-
+    
         sep(tab).grid(row=0, column=0, sticky="ew", padx=16)
-
-        list_outer = mk_frame(tab, bg=SURFACE2)
-        list_outer.grid(row=1, column=0, sticky="nsew", padx=16, pady=14)
-        list_outer.columnconfigure(0, weight=1)
-        list_outer.rowconfigure(1, weight=1)
-
-        # Header frame
-        header_frame = mk_frame(list_outer, bg=SURFACE3)
-        header_frame.grid(row=0, column=0, sticky="ew", pady=(0, 2))
+    
+        # Create a frame for the NVR list with Treeview for better alignment
+        list_frame = mk_frame(tab, bg=SURFACE2)
+        list_frame.grid(row=1, column=0, sticky="nsew", padx=16, pady=14)
+        list_frame.columnconfigure(0, weight=1)
+        list_frame.rowconfigure(0, weight=1)
+    
+        # Create Treeview for NVR list
+        columns = ("Name", "SKU", "Channels", "Bandwidth", "Slots", "Price", "Mode", "Brand")
+        self.nvr_tree = ttk.Treeview(list_frame, columns=columns, show="headings", height=15)
         
-        headers = ["Name", "SKU", "Channels", "Max MB/s", "HDD Slots", "Price ($)", "Mode", "Brand", ""]
-        widths = [22, 18, 8, 8, 8, 10, 7, 15, 6]
+        # Define column headings and widths
+        column_configs = [
+            ("Name", 200, "w"),
+            ("SKU", 150, "w"),
+            ("Channels", 70, "center"),
+            ("Bandwidth", 80, "center"),
+            ("Slots", 60, "center"),
+            ("Price", 100, "e"),
+            ("Mode", 60, "center"),
+            ("Brand", 180, "w"),
+        ]
         
-        for col, (header, width) in enumerate(zip(headers, widths)):
-            mk_label(header_frame, header, font=FONT_H3, fg=ACCENT, bg=SURFACE3, 
-                    width=width, anchor="w").grid(row=0, column=col, padx=8, pady=6, sticky="w")
-
-        # Canvas for scrolling
-        canvas = tk.Canvas(list_outer, bg=SURFACE2, highlightthickness=0)
-        canvas.grid(row=1, column=0, sticky="nsew")
+        for col, width, anchor in column_configs:
+            self.nvr_tree.heading(col, text=col)
+            self.nvr_tree.column(col, width=width, anchor=anchor)
         
-        vsb = ttk.Scrollbar(list_outer, orient="vertical", command=canvas.yview)
-        vsb.grid(row=1, column=1, sticky="ns")
-        canvas.configure(yscrollcommand=vsb.set)
+        # Add scrollbars
+        vsb = ttk.Scrollbar(list_frame, orient="vertical", command=self.nvr_tree.yview)
+        hsb = ttk.Scrollbar(list_frame, orient="horizontal", command=self.nvr_tree.xview)
+        self.nvr_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
         
-        list_outer.columnconfigure(0, weight=1)
-        list_outer.rowconfigure(1, weight=1)
-
-        self.nvr_frame = mk_frame(canvas, bg=SURFACE2)
-        canvas.create_window((0, 0), window=self.nvr_frame, anchor="nw")
-
-        def _on_resize(e):
-            canvas.configure(scrollregion=canvas.bbox("all"))
-        self.nvr_frame.bind("<Configure>", _on_resize)
+        # Grid layout
+        self.nvr_tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        hsb.grid(row=1, column=0, sticky="ew")
         
-        self.nvr_price_entries = []
+        # Bind double-click to edit price
+        self.nvr_tree.bind("<Double-1>", self._on_nvr_double_click)
+        
+        # Store price variables for editing
+        self.nvr_price_vars = {}
+        
         self.refresh_nvr_list_tab()
-
+    
     def refresh_nvr_list_tab(self):
-        for w in self.nvr_frame.winfo_children():
-            w.destroy()
-        self.nvr_price_entries = []
-
+        """Refresh the NVR list in the treeview"""
+        # Clear existing items
+        for item in self.nvr_tree.get_children():
+            self.nvr_tree.delete(item)
+        
+        self.nvr_price_vars = {}
+        
         for i, n in enumerate(self.nvr_list):
-            row_bg = SURFACE if i % 2 == 0 else SURFACE2
-            row = mk_frame(self.nvr_frame, bg=row_bg)
-            row.pack(fill="x", pady=1)
-
-            # Name
-            mk_label(row, n["Name"], bg=row_bg, fg=TEXT, width=22, anchor="w").pack(side="left", padx=(12,4), pady=4)
-            # SKU
-            mk_label(row, n["SKU"], bg=row_bg, fg=TEXT2, font=FONT_MONO, width=18, anchor="w").pack(side="left", padx=4)
-            # Channels
-            mk_label(row, str(n["CH"]), bg=row_bg, fg=TEXT, width=8, anchor="center").pack(side="left", padx=4)
-            # Max MB/s
-            mk_label(row, str(n["MB"]), bg=row_bg, fg=TEXT, width=8, anchor="center").pack(side="left", padx=4)
-            # HDD Slots
-            mk_label(row, str(n["Slots"]), bg=row_bg, fg=TEXT, width=8, anchor="center").pack(side="left", padx=4)
-
-            # Price (editable)
-            price_var = tk.StringVar(value=f"{n['Price']:.2f}")
-            e = mk_entry(row, textvariable=price_var, width=10, bg=row_bg)
-            e.pack(side="left", padx=4)
-            self.nvr_price_entries.append(price_var)
-
-            # Mode
-            mode_color = GOLD if n.get("mode") == "RAID" else ACCENT
-            mk_label(row, n.get("mode", "RAID"), bg=row_bg, fg=mode_color, width=7, anchor="center").pack(side="left", padx=4)
+            # Determine tag for row color
+            tag = "even" if i % 2 == 0 else "odd"
             
-            # Brand
-            mk_label(row, n.get("brand", "Tyco - American Dynamics"), bg=row_bg, fg=TEXT2, width=15, anchor="w").pack(side="left", padx=4)
-
-            # Delete button
-            mk_btn(row, "Delete", lambda idx=i: self.delete_nvr(idx), style="danger").pack(side="right", padx=(4, 12))
-
-        save_row = mk_frame(self.nvr_frame, bg=SURFACE2)
-        save_row.pack(fill="x", pady=8, padx=12)
-        mk_btn(save_row, "Save All Price Updates", self.save_nvr_prices, style="success").pack(side="left")
-
+            # Format price
+            price_str = f"${n['Price']:,.2f}"
+            
+            # Insert row
+            item = self.nvr_tree.insert("", "end", values=(
+                n["Name"],
+                n["SKU"],
+                n["CH"],
+                n["MB"],
+                n["Slots"],
+                price_str,
+                n.get("mode", "RAID"),
+                n.get("brand", "Tyco - American Dynamics"),
+            ), tags=(tag,))
+            
+            # Store the original price for editing
+            self.nvr_price_vars[item] = n["Price"]
+        
+        # Configure tag colors
+        self.nvr_tree.tag_configure("odd", background=SURFACE)
+        self.nvr_tree.tag_configure("even", background=SURFACE2)
+    
+    def _on_nvr_double_click(self, event):
+        """Handle double-click on NVR row to edit price"""
+        item = self.nvr_tree.selection()[0] if self.nvr_tree.selection() else None
+        if not item:
+            return
+        
+        # Get the current row's values
+        values = self.nvr_tree.item(item, "values")
+        if not values:
+            return
+        
+        # Get the current price (remove $ and commas)
+        current_price = float(values[5].replace("$", "").replace(",", ""))
+        
+        # Create a popup for editing
+        edit_window = tk.Toplevel(self.root)
+        edit_window.title("Edit Price")
+        edit_window.configure(bg=SURFACE)
+        edit_window.geometry("300x120")
+        edit_window.transient(self.root)
+        edit_window.grab_set()
+        
+        # Center the window
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 150
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 60
+        edit_window.geometry(f"300x120+{x}+{y}")
+        
+        mk_label(edit_window, f"Edit price for {values[0]}", font=FONT_H2, fg=ACCENT, bg=SURFACE).pack(pady=(10, 5))
+        
+        price_var = tk.StringVar(value=f"{current_price:.2f}")
+        price_entry = mk_entry(edit_window, textvariable=price_var, width=15)
+        price_entry.pack(pady=5)
+        
+        def save_price():
+            try:
+                new_price = float(price_var.get())
+                if new_price <= 0:
+                    raise ValueError("Price must be positive")
+                
+                # Find the NVR in the list and update
+                for idx, nvr in enumerate(self.nvr_list):
+                    if nvr["Name"] == values[0] and nvr["SKU"] == values[1]:
+                        self.nvr_list[idx]["Price"] = new_price
+                        break
+                
+                # Update the display
+                self.refresh_nvr_list_tab()
+                edit_window.destroy()
+                
+            except ValueError as e:
+                messagebox.showerror("Error", f"Invalid price: {e}")
+        
+        btn_frame = mk_frame(edit_window, bg=SURFACE)
+        btn_frame.pack(pady=10)
+        mk_btn(btn_frame, "Save", save_price, style="primary").pack(side="left", padx=5)
+        mk_btn(btn_frame, "Cancel", edit_window.destroy, style="ghost").pack(side="left", padx=5)
+    
+    def save_nvr_prices(self):
+        """Save all NVR prices to file"""
+        # Prices are already updated in real-time via double-click
+        self.save_all_data()
+        messagebox.showinfo("Saved", "NVR Prices Updated.")
+    
+    def delete_nvr(self, idx):
+        """Delete NVR by index - this is kept for reference but not used with treeview"""
+        # This method is kept for compatibility but the treeview has its own delete
+        pass
+    
+    def _delete_nvr_from_tree(self):
+        """Delete the selected NVR from the treeview"""
+        selected = self.nvr_tree.selection()
+        if not selected:
+            messagebox.showwarning("Warning", "Please select an NVR to delete.")
+            return
+        
+        if messagebox.askyesno("Confirm", "Delete the selected NVR model?"):
+            for item in selected:
+                # Get the values to find which NVR to delete
+                values = self.nvr_tree.item(item, "values")
+                if values:
+                    # Find and remove from nvr_list
+                    for idx, nvr in enumerate(self.nvr_list):
+                        if nvr["Name"] == values[0] and nvr["SKU"] == values[1]:
+                            self.nvr_list.pop(idx)
+                            break
+                
+                # Remove from treeview
+                self.nvr_tree.delete(item)
+            
+            # Save changes
+            self.save_all_data()
+            self.refresh_nvr_dropdowns()
+    
     def add_new_nvr(self):
+        """Add a new NVR to the database"""
         try:
             name = self.nf["Name"].get().strip()
             if not name:
@@ -886,39 +980,35 @@ class CCTVApp:
             price_str = self.nf["Price"].get().strip()
             if not price_str:
                 raise ValueError("Price required")
-
+    
             row = {
-                "Name": name, "SKU": sku, "CH": int(ch_str), "MB": int(mb_str),
-                "Slots": int(slots_str), "Price": float(price_str),
-                "mode": self.na.get(), "brand": self.nf_brand.get(),
+                "Name": name, 
+                "SKU": sku, 
+                "CH": int(ch_str), 
+                "MB": int(mb_str),
+                "Slots": int(slots_str), 
+                "Price": float(price_str),
+                "mode": self.na.get(), 
+                "brand": self.nf_brand.get(),
             }
-
+    
             if row["CH"] <= 0 or row["MB"] <= 0 or row["Slots"] <= 0 or row["Price"] <= 0:
                 raise ValueError("All values must be positive")
-
+    
             self.nvr_list.append(row)
             self.save_all_data()
             self.refresh_nvr_dropdowns()
             self.refresh_nvr_list_tab()
+            
+            # Clear input fields
+            for f in self.nf.values():
+                f.set("")
+            self.na.set("RAID")
+            self.nf_brand.set("Tyco - American Dynamics")
+            
             messagebox.showinfo("Success", "NVR Added.")
         except Exception as e:
             messagebox.showerror("Error", f"Invalid input: {e}")
-
-    def save_nvr_prices(self):
-        for i, var in enumerate(self.nvr_price_entries):
-            try:
-                self.nvr_list[i]["Price"] = float(var.get())
-            except ValueError:
-                pass
-        self.save_all_data()
-        messagebox.showinfo("Saved", "NVR Prices Updated.")
-
-    def delete_nvr(self, idx):
-        if messagebox.askyesno("Confirm", "Delete this model?"):
-            self.nvr_list.pop(idx)
-            self.save_all_data()
-            self.refresh_nvr_dropdowns()
-            self.refresh_nvr_list_tab()
 
     # ── Tab 4: HDD Prices ─────────────────────────────────────────────────
     def _build_hdd_tab(self, tab):
