@@ -68,6 +68,7 @@ jobs:
         
         pyinstaller --onefile `
           --name="CCTV_Calculator" `
+          --add-data "Cameras_JSON.json;." `
           --hidden-import=xlwings `
           --hidden-import=win32com `
           --hidden-import=win32api `
