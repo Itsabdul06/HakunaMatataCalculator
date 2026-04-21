@@ -1269,6 +1269,7 @@ class CCTVApp:
         self.res_txt.config(state="disabled")
 
     # ── PDF Export ──────────────────────────────────────────────────────────
+    # ── PDF Export ──────────────────────────────────────────────────────────
     def export_to_pdf(self):
         """Export calculation results to PDF"""
         if not self.last_calculation_result:
@@ -1342,7 +1343,23 @@ class CCTVApp:
             
             camera_data = [["Camera Name", "Quantity", "Mbps", "Storage (TB)"]]
             for cam in self.last_calculation_result["cameras"]:
-                camera_data.append([cam[0], str(cam[1]), f"{cam[2]:.2f}", f"{cam[3]:.2f}"])
+                # Convert all values to strings to avoid formatting issues
+                camera_name = str(cam[0])
+                quantity = str(cam[1])
+                # Format mbps as string with 2 decimals
+                try:
+                    mbps_val = float(cam[2])
+                    mbps_str = f"{mbps_val:.2f}"
+                except (ValueError, TypeError):
+                    mbps_str = str(cam[2])
+                # Format storage as string with 2 decimals
+                try:
+                    storage_val = float(cam[3])
+                    storage_str = f"{storage_val:.2f}"
+                except (ValueError, TypeError):
+                    storage_str = str(cam[3])
+                
+                camera_data.append([camera_name, quantity, mbps_str, storage_str])
             
             camera_table = Table(camera_data, colWidths=[3*inch, 0.8*inch, 0.8*inch, 1*inch])
             camera_table.setStyle(TableStyle([
@@ -1366,17 +1383,39 @@ class CCTVApp:
             for i, unit in enumerate(self.last_calculation_result["nvr_config"], 1):
                 nvr = unit["nvr"]
                 hdd = unit["hdd_config"]
-                nvr_data.append([
-                    str(i),
-                    nvr["Name"],
-                    str(unit["camera_count"]),
-                    f"{unit['total_bandwidth']:.1f} Mbps",
-                    f"{hdd['qty']} x {hdd['cap']} TB",
-                    f"${unit['cost']:,.2f}"
-                ])
+                
+                # Convert all values to strings safely
+                unit_num = str(i)
+                nvr_name = str(nvr["Name"])
+                camera_count = str(unit["camera_count"])
+                
+                # Format bandwidth
+                try:
+                    bw_val = float(unit["total_bandwidth"])
+                    bw_str = f"{bw_val:.1f} Mbps"
+                except (ValueError, TypeError):
+                    bw_str = str(unit["total_bandwidth"])
+                
+                # Format storage
+                try:
+                    hdd_qty = int(hdd["qty"])
+                    hdd_cap = float(hdd["cap"])
+                    storage_str = f"{hdd_qty} x {hdd_cap:.0f} TB"
+                except (ValueError, TypeError):
+                    storage_str = str(hdd.get("qty", "?")) + " x " + str(hdd.get("cap", "?")) + " TB"
+                
+                # Format cost
+                try:
+                    cost_val = float(unit["cost"])
+                    cost_str = f"${cost_val:,.2f}"
+                except (ValueError, TypeError):
+                    cost_str = str(unit["cost"])
+                
+                nvr_data.append([unit_num, nvr_name, camera_count, bw_str, storage_str, cost_str])
             
             # Add total row
-            nvr_data.append(["", "", "", "", "TOTAL:", f"${total_cost:,.2f}"])
+            total_cost_str = f"${total_cost:,.2f}" if isinstance(total_cost, (int, float)) else str(total_cost)
+            nvr_data.append(["", "", "", "", "TOTAL:", total_cost_str])
             
             nvr_table = Table(nvr_data, colWidths=[0.6*inch, 2*inch, 0.8*inch, 1.2*inch, 1.2*inch, 1.2*inch])
             nvr_table.setStyle(TableStyle([
@@ -1401,8 +1440,9 @@ class CCTVApp:
             
         except Exception as e:
             progress_msg.destroy()
+            import traceback
+            traceback.print_exc()
             messagebox.showerror("Error", f"Failed to create PDF:\n{str(e)}")
-
     # ── Excel Export ──────────────────────────────────────────────────────
     def export_to_excel(self):
         if not self.last_calculation_result:
