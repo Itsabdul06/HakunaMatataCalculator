@@ -3,7 +3,7 @@
 CCTV Master Calculator
 Rewrite of KantechCalc with improved GUI.
 Maintains all original functionality: camera entry, NVR management,
-HDD pricing, auto/manual calculation, report export to Excel.
+HDD pricing, auto/manual calculation, report export to Excel and PDF.
 """
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
@@ -18,6 +18,18 @@ try:
     EXCEL_AVAILABLE = True
 except ImportError:
     EXCEL_AVAILABLE = False
+
+# Try to import reportlab for PDF export
+try:
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import letter, landscape
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.pdfgen import canvas
+    PDF_AVAILABLE = True
+except ImportError:
+    PDF_AVAILABLE = False
 
 # ─────────────────────────── Persistence ───────────────────────────────────
 DATA_FILE = "system_data.json"
@@ -252,10 +264,8 @@ def solve_combo(flat_cams, nvrs, raid_mode, hdd_prices):
 def get_resource_path():
     """Get the correct path for resources whether running as script or compiled EXE"""
     if getattr(sys, 'frozen', False):
-        # Running as compiled EXE
         return sys._MEIPASS
     else:
-        # Running as script
         return os.path.dirname(os.path.abspath(__file__))
 
 def load_camera_database():
@@ -274,8 +284,6 @@ def load_camera_database():
 # Calculate storage in TB per camera
 def calculate_storage_tb(mbps, days):
     """Calculate storage in TB per camera for given Mbps and retention days"""
-    # Formula: (Mbps × 324 × (days/30)) / 1024
-    # Simplified: Mbps × days × 0.01055
     return mbps * days * 0.01055
 
 # ─────────────────────────── Widget Helpers ────────────────────────────────
@@ -674,12 +682,10 @@ class CCTVApp:
         sel = self.tree.selection()
         if not sel: 
             return
-        # Populate the dropdowns with the selected camera's values
         vals = self.tree.item(sel[0])["values"]
         if vals:
             camera_name = vals[0]
             if camera_name in self.camera_db:
-                # Find the camera type
                 cam_type = self.camera_db[camera_name].get("type", "All")
                 if cam_type in self.camera_types:
                     self.selected_camera_type.set(cam_type)
@@ -754,6 +760,7 @@ class CCTVApp:
         btn_row.pack(fill="x", padx=14, pady=(0, 12))
         mk_btn(btn_row, "⚡  Run Calculation", self.run_logic, style="primary").pack(side="left", padx=(0, 10))
         mk_btn(btn_row, "Export to Excel", self.export_to_excel, style="success").pack(side="left", padx=(0, 10))
+        mk_btn(btn_row, "Export to PDF", self.export_to_pdf, style="ghost").pack(side="left", padx=(0, 10))
         self.calc_status = mk_label(btn_row, "", fg=TEXT2, bg=SURFACE, font=FONT_BODY)
         self.calc_status.pack(side="left", padx=16)
 
@@ -833,7 +840,7 @@ class CCTVApp:
             self.progress_window.destroy()
         self.progress_window = None
 
-    # ── Tab 3: NVR Models (Treeview with proper alignment) ──────────────────
+    # ── Tab 3: NVR Models ──────────────────────────────────────────────────
     def _build_nvr_tab(self, tab):
         tab.columnconfigure(0, weight=1)
         tab.rowconfigure(1, weight=1)
@@ -1261,6 +1268,141 @@ class CCTVApp:
         self.res_txt.insert("end", msg, "error")
         self.res_txt.config(state="disabled")
 
+    # ── PDF Export ──────────────────────────────────────────────────────────
+    def export_to_pdf(self):
+        """Export calculation results to PDF"""
+        if not self.last_calculation_result:
+            messagebox.showwarning("Warning", "Run a calculation first before exporting!")
+            return
+        
+        if not PDF_AVAILABLE:
+            messagebox.showerror("Error", 
+                "PDF export requires reportlab library.\n\n"
+                "Please install it using:\npip install reportlab")
+            return
+        
+        # Ask for save location
+        pdf_file = filedialog.asksaveasfilename(
+            title="Save PDF Report",
+            defaultextension=".pdf",
+            filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")],
+            initialfile=f"CCTV_Design_{datetime.now().strftime('%Y%m%d_%H%M')}"
+        )
+        
+        if not pdf_file:
+            return
+        
+        # Show progress
+        progress_msg = tk.Toplevel(self.root)
+        progress_msg.title("Generating PDF...")
+        progress_msg.configure(bg=SURFACE)
+        progress_msg.geometry("300x80")
+        progress_msg.transient(self.root)
+        progress_msg.grab_set()
+        mk_label(progress_msg, "Generating PDF...",
+                font=FONT_H2, fg=ACCENT, bg=SURFACE).pack(pady=(20, 10))
+        self.root.update()
+        
+        try:
+            # Create PDF document
+            doc = SimpleDocTemplate(pdf_file, pagesize=letter,
+                                   rightMargin=72, leftMargin=72,
+                                   topMargin=72, bottomMargin=72)
+            
+            styles = getSampleStyleSheet()
+            title_style = styles['Title']
+            heading_style = styles['Heading2']
+            normal_style = styles['Normal']
+            
+            # Create a custom style for cost
+            cost_style = ParagraphStyle(
+                'CostStyle',
+                parent=styles['Normal'],
+                textColor=colors.green,
+                fontSize=14,
+                alignment=1  # Center alignment
+            )
+            
+            story = []
+            
+            # Title
+            story.append(Paragraph("CCTV Design Report", title_style))
+            story.append(Spacer(1, 0.25 * inch))
+            story.append(Paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}", normal_style))
+            story.append(Spacer(1, 0.5 * inch))
+            
+            # Summary
+            total_cost = sum(u["cost"] for u in self.last_calculation_result["nvr_config"])
+            story.append(Paragraph(f"System Total: ${total_cost:,.2f}", cost_style))
+            story.append(Spacer(1, 0.5 * inch))
+            
+            # Camera List
+            story.append(Paragraph("Camera List", heading_style))
+            story.append(Spacer(1, 0.1 * inch))
+            
+            camera_data = [["Camera Name", "Quantity", "Mbps", "Storage (TB)"]]
+            for cam in self.last_calculation_result["cameras"]:
+                camera_data.append([cam[0], str(cam[1]), f"{cam[2]:.2f}", f"{cam[3]:.2f}"])
+            
+            camera_table = Table(camera_data, colWidths=[3*inch, 0.8*inch, 0.8*inch, 1*inch])
+            camera_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ]))
+            story.append(camera_table)
+            story.append(Spacer(1, 0.3 * inch))
+            
+            # NVR Configuration
+            story.append(Paragraph("NVR Configuration", heading_style))
+            story.append(Spacer(1, 0.1 * inch))
+            
+            nvr_data = [["Unit", "NVR Model", "Cameras", "Bandwidth", "Storage", "Cost"]]
+            for i, unit in enumerate(self.last_calculation_result["nvr_config"], 1):
+                nvr = unit["nvr"]
+                hdd = unit["hdd_config"]
+                nvr_data.append([
+                    str(i),
+                    nvr["Name"],
+                    str(unit["camera_count"]),
+                    f"{unit['total_bandwidth']:.1f} Mbps",
+                    f"{hdd['qty']} x {hdd['cap']} TB",
+                    f"${unit['cost']:,.2f}"
+                ])
+            
+            # Add total row
+            nvr_data.append(["", "", "", "", "TOTAL:", f"${total_cost:,.2f}"])
+            
+            nvr_table = Table(nvr_data, colWidths=[0.6*inch, 2*inch, 0.8*inch, 1.2*inch, 1.2*inch, 1.2*inch])
+            nvr_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-2, -2), colors.beige),
+                ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
+                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ]))
+            story.append(nvr_table)
+            
+            # Build PDF
+            doc.build(story)
+            
+            progress_msg.destroy()
+            messagebox.showinfo("Success", f"PDF report saved to:\n{pdf_file}")
+            
+        except Exception as e:
+            progress_msg.destroy()
+            messagebox.showerror("Error", f"Failed to create PDF:\n{str(e)}")
+
     # ── Excel Export ──────────────────────────────────────────────────────
     def export_to_excel(self):
         if not self.last_calculation_result:
@@ -1333,14 +1475,24 @@ class CCTVApp:
             # Cameras header
             excel_rows.append(("", "", "", "", "", "", "header", "Cameras", None))
             
-            for cam in cameras:
+            # Store first camera info for Override sheet
+            first_camera = cameras[0] if cameras else None
+            first_camera_fps = None
+            first_camera_retention = None
+            
+            for i, cam in enumerate(cameras):
                 cam_name = cam[0]
                 cam_qty = int(cam[1])
                 cam_sku = self.camera_db.get(cam_name, {}).get("sku", cam_name)
                 cam_brand = self.camera_db.get(cam_name, {}).get("brand", "")
                 excel_rows.append((cam_sku, cam_qty, "", cam_brand, "CCTV", "Camera", "data", "", None))
-                # CAMLIC row with brand
                 excel_rows.append(("ADVEC01", 1, "ch", "Tyco - American Dynamics", "CCTV", "Software", "data", "", None))
+                
+                # Get FPS and Retention for first camera
+                if i == 0:
+                    # Try to get FPS from the selected_fps variable or from camera data
+                    first_camera_fps = self.selected_fps.get() if self.selected_fps.get() else "30fps"
+                    first_camera_retention = self.retention_days.get() if self.retention_days.get() else "30"
             
             # NVRs header
             excel_rows.append(("", "", "", "", "", "", "header", "NVRs", None))
@@ -1351,11 +1503,12 @@ class CCTVApp:
             
             # VMS header
             excel_rows.append(("", "", "", "", "", "", "header", "VMS", None))
-            # VMS row with brand
             excel_rows.append(("ADVASC01", 1, "", "Tyco - American Dynamics", "CCTV", "Software", "data", "", None))
+            
+            # Add Workstation and Monitor rows
             excel_rows.append(("Workstation", 1, "ch", "", "CCTV", "Local", "data", "", None))
             excel_rows.append(("Monitor", 1, "ch", "", "CCTV", "Local", "data", "", None))
-            
+
             current_row = 9
             
             # Track which rows are headers to only clear those
@@ -1370,7 +1523,7 @@ class CCTVApp:
             for row in header_rows:
                 ws.range(f"A{row}:M{row}").value = None
 
-            # Write new data
+            # Write new data to offer sheet
             for row_data in excel_rows:
                 part_no, qty, sys, brand, solution, category, row_type, header_text, _ = row_data
                 
@@ -1396,6 +1549,17 @@ class CCTVApp:
                         ws.range(f"M{current_row}").value = category
                 
                 current_row += 1
+
+            # Write to Override sheet if it exists
+            try:
+                override_sheet = wb.sheets["Override"]
+                if first_camera_fps:
+                    override_sheet.range("R6").value = first_camera_fps
+                if first_camera_retention:
+                    override_sheet.range("Q6").value = int(first_camera_retention)
+            except Exception:
+                # Override sheet doesn't exist - just skip
+                pass
 
             wb.save(output_file)
             wb.close()
