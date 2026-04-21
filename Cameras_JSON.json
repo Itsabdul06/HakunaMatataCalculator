@@ -5,10 +5,6 @@
     "resolution": "3840x2160",
     "throughputs": {
       "H264": {
-        "1fps": 3.28,
-        "5fps": 13.62,
-        "7fps": 16.32,
-        "10fps": 16.66,
         "12fps": 16.70,
         "15fps": 17.04,
         "20fps": 17.50,
@@ -16,10 +12,6 @@
         "30fps": 18.32
       },
       "H265": {
-        "1fps": 2.44,
-        "5fps": 11.66,
-        "7fps": 14.34,
-        "10fps": 14.48,
         "12fps": 14.68,
         "15fps": 14.54,
         "20fps": 14.74,
@@ -33,10 +25,7 @@
     "brand": "Tyco - Illustra Standard",
     "resolution": "2560x1440",
     "throughputs": {
-      "H264": {
-        "1fps": 0.905,
-        "5fps": 1.42,
-        "10fps": 2.015,
+      "H265": {
         "15fps": 2.475,
         "20fps": 2.825,
         "25fps": 3.12,
@@ -49,10 +38,7 @@
     "brand": "Tyco - Illustra Standard",
     "resolution": "2560x1440",
     "throughputs": {
-      "H264": {
-        "1fps": 0.905,
-        "5fps": 1.42,
-        "10fps": 2.015,
+      "H265": {
         "15fps": 2.475,
         "20fps": 2.825,
         "25fps": 3.12,
@@ -65,10 +51,7 @@
     "brand": "Tyco - Illustra Standard",
     "resolution": "2560x1440",
     "throughputs": {
-      "H264": {
-        "1fps": 0.905,
-        "5fps": 1.42,
-        "10fps": 2.015,
+      "H265": {
         "15fps": 2.475,
         "20fps": 2.825,
         "25fps": 3.12,
@@ -81,10 +64,7 @@
     "brand": "Tyco - Illustra Standard",
     "resolution": "2560x1440",
     "throughputs": {
-      "H264": {
-        "1fps": 0.905,
-        "5fps": 1.42,
-        "10fps": 2.015,
+      "H265": {
         "15fps": 2.475,
         "20fps": 2.825,
         "25fps": 3.12,
@@ -97,10 +77,7 @@
     "brand": "Tyco - Illustra Standard",
     "resolution": "2560x1440",
     "throughputs": {
-      "H264": {
-        "1fps": 0.905,
-        "5fps": 1.42,
-        "10fps": 2.015,
+      "H265": {
         "15fps": 2.475,
         "20fps": 2.825,
         "25fps": 3.12,
@@ -113,10 +90,7 @@
     "brand": "Tyco - Illustra Standard",
     "resolution": "2560x1440",
     "throughputs": {
-      "H264": {
-        "1fps": 0.905,
-        "5fps": 1.42,
-        "10fps": 2.015,
+      "H265": {
         "15fps": 2.475,
         "20fps": 2.825,
         "25fps": 3.12,
