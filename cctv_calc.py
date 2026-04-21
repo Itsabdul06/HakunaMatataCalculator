@@ -336,6 +336,7 @@ class CCTVApp:
         self.camera_db = load_camera_database()
         
         # UI Variables for camera entry
+        self.selected_camera_type = tk.StringVar(value="All")
         self.selected_camera = tk.StringVar()
         self.selected_codec = tk.StringVar()
         self.selected_fps = tk.StringVar()
@@ -344,7 +345,13 @@ class CCTVApp:
         self.calculated_mbps = tk.StringVar(value="0.00")
         self.calculated_storage = tk.StringVar(value="0.00")
         
+        # Get unique camera types from database
+        self.camera_types = ["All"] + sorted(set(
+            cam.get("type", "Other") for cam in self.camera_db.values() if cam.get("type")
+        ))
+        
         # Bind trace to update Mbps and Storage when selections change
+        self.selected_camera_type.trace('w', self.update_camera_dropdown)
         self.selected_camera.trace('w', self.update_codec_dropdown)
         self.selected_codec.trace('w', self.update_fps_dropdown)
         self.selected_fps.trace('w', self.update_mbps_and_storage)
@@ -355,7 +362,7 @@ class CCTVApp:
         self._apply_ttk_styles()
         
         # Populate camera dropdown after UI is built
-        self.populate_camera_dropdown()
+        self.update_camera_dropdown()
 
     def load_all_data(self):
         if os.path.exists(DATA_FILE):
@@ -428,15 +435,27 @@ class CCTVApp:
         self._build_nvr_tab(self.tabs[2])
         self._build_hdd_tab(self.tabs[3])
 
-    # ── Tab 1: Cameras (Database only) ────────────────────────────────────
-    def populate_camera_dropdown(self):
-        """Populate camera dropdown with names from database"""
-        camera_names = sorted(self.camera_db.keys())
-        if camera_names:
-            self.camera_dropdown['values'] = camera_names
-            self.selected_camera.set(camera_names[0])
+    # ── Tab 1: Cameras (Database only with Type Filter) ────────────────────
+    def update_camera_dropdown(self, *args):
+        """Update camera dropdown based on selected camera type"""
+        camera_type = self.selected_camera_type.get()
+        
+        if camera_type == "All":
+            filtered_cameras = list(self.camera_db.keys())
+        else:
+            filtered_cameras = [
+                name for name, data in self.camera_db.items() 
+                if data.get("type", "") == camera_type
+            ]
+        
+        filtered_cameras.sort()
+        
+        if filtered_cameras:
+            self.camera_dropdown['values'] = filtered_cameras
+            self.selected_camera.set(filtered_cameras[0])
         else:
             self.camera_dropdown['values'] = ["No cameras found"]
+            self.selected_camera.set("")
     
     def update_codec_dropdown(self, *args):
         """Update codec dropdown based on selected camera"""
@@ -563,7 +582,7 @@ class CCTVApp:
     
     def _build_cameras_tab(self, tab):
         tab.columnconfigure(0, weight=1)
-        tab.rowconfigure(2, weight=1)
+        tab.rowconfigure(3, weight=1)
 
         # ─────────────────────────────────────────────────────────────────────
         # SECTION: Add Camera from Database
@@ -574,47 +593,52 @@ class CCTVApp:
         mk_label(db_frame, "Add Camera from Database", font=FONT_H2, fg=ACCENT, bg=SURFACE).grid(
             row=0, column=0, columnspan=10, sticky="w", padx=14, pady=(10, 8))
 
-        # Row 1: Camera Model
-        mk_label(db_frame, "Camera Model:", bg=SURFACE, fg=TEXT2).grid(row=1, column=0, sticky="w", padx=(14, 5), pady=5)
+        # Row 1: Camera Type Filter
+        mk_label(db_frame, "Camera Type:", bg=SURFACE, fg=TEXT2).grid(row=1, column=0, sticky="w", padx=(14, 5), pady=5)
+        type_dropdown = ttk.Combobox(db_frame, textvariable=self.selected_camera_type, width=20, state="readonly")
+        type_dropdown.grid(row=1, column=1, sticky="w", padx=(0, 10), pady=5)
+        type_dropdown['values'] = self.camera_types
+        
+        # Row 2: Camera Model
+        mk_label(db_frame, "Camera Model:", bg=SURFACE, fg=TEXT2).grid(row=2, column=0, sticky="w", padx=(14, 5), pady=5)
         self.camera_dropdown = ttk.Combobox(db_frame, textvariable=self.selected_camera, width=50, state="readonly")
-        self.camera_dropdown.grid(row=1, column=1, columnspan=3, sticky="w", padx=(0, 10), pady=5)
-        self.camera_dropdown.bind("<<ComboboxSelected>>", self.update_codec_dropdown)
+        self.camera_dropdown.grid(row=2, column=1, columnspan=3, sticky="w", padx=(0, 10), pady=5)
         
-        # Row 2: Codec
-        mk_label(db_frame, "Codec:", bg=SURFACE, fg=TEXT2).grid(row=2, column=0, sticky="w", padx=(14, 5), pady=5)
+        # Row 3: Codec
+        mk_label(db_frame, "Codec:", bg=SURFACE, fg=TEXT2).grid(row=3, column=0, sticky="w", padx=(14, 5), pady=5)
         self.codec_dropdown = ttk.Combobox(db_frame, textvariable=self.selected_codec, width=10, state="readonly")
-        self.codec_dropdown.grid(row=2, column=1, sticky="w", padx=(0, 10), pady=5)
+        self.codec_dropdown.grid(row=3, column=1, sticky="w", padx=(0, 10), pady=5)
         
-        # Row 3: FPS
-        mk_label(db_frame, "FPS:", bg=SURFACE, fg=TEXT2).grid(row=3, column=0, sticky="w", padx=(14, 5), pady=5)
+        # Row 4: FPS
+        mk_label(db_frame, "FPS:", bg=SURFACE, fg=TEXT2).grid(row=4, column=0, sticky="w", padx=(14, 5), pady=5)
         self.fps_dropdown = ttk.Combobox(db_frame, textvariable=self.selected_fps, width=10, state="readonly")
-        self.fps_dropdown.grid(row=3, column=1, sticky="w", padx=(0, 10), pady=5)
+        self.fps_dropdown.grid(row=4, column=1, sticky="w", padx=(0, 10), pady=5)
         
-        # Row 4: Quantity
-        mk_label(db_frame, "Quantity:", bg=SURFACE, fg=TEXT2).grid(row=4, column=0, sticky="w", padx=(14, 5), pady=5)
+        # Row 5: Quantity
+        mk_label(db_frame, "Quantity:", bg=SURFACE, fg=TEXT2).grid(row=5, column=0, sticky="w", padx=(14, 5), pady=5)
         qty_entry = mk_entry(db_frame, textvariable=self.camera_quantity, width=10)
-        qty_entry.grid(row=4, column=1, sticky="w", padx=(0, 10), pady=5)
+        qty_entry.grid(row=5, column=1, sticky="w", padx=(0, 10), pady=5)
         
-        # Row 5: Retention Days
-        mk_label(db_frame, "Retention Days:", bg=SURFACE, fg=TEXT2).grid(row=5, column=0, sticky="w", padx=(14, 5), pady=5)
+        # Row 6: Retention Days
+        mk_label(db_frame, "Retention Days:", bg=SURFACE, fg=TEXT2).grid(row=6, column=0, sticky="w", padx=(14, 5), pady=5)
         days_entry = mk_entry(db_frame, textvariable=self.retention_days, width=10)
-        days_entry.grid(row=5, column=1, sticky="w", padx=(0, 10), pady=5)
+        days_entry.grid(row=6, column=1, sticky="w", padx=(0, 10), pady=5)
         
-        # Row 6: Calculated Mbps
-        mk_label(db_frame, "Mbps (calculated):", bg=SURFACE, fg=TEXT2).grid(row=6, column=0, sticky="w", padx=(14, 5), pady=5)
+        # Row 7: Calculated Mbps
+        mk_label(db_frame, "Mbps (calculated):", bg=SURFACE, fg=TEXT2).grid(row=7, column=0, sticky="w", padx=(14, 5), pady=5)
         mbps_label = mk_label(db_frame, "", font=FONT_MONO, fg=ACCENT, bg=SURFACE, width=12)
-        mbps_label.grid(row=6, column=1, sticky="w", padx=(0, 10), pady=5)
+        mbps_label.grid(row=7, column=1, sticky="w", padx=(0, 10), pady=5)
         self.calculated_mbps.trace('w', lambda *args: mbps_label.config(text=self.calculated_mbps.get()))
         
-        # Row 7: Calculated Storage
-        mk_label(db_frame, "Storage TB/cam (calculated):", bg=SURFACE, fg=TEXT2).grid(row=7, column=0, sticky="w", padx=(14, 5), pady=5)
+        # Row 8: Calculated Storage
+        mk_label(db_frame, "Storage TB/cam (calculated):", bg=SURFACE, fg=TEXT2).grid(row=8, column=0, sticky="w", padx=(14, 5), pady=5)
         storage_label = mk_label(db_frame, "", font=FONT_MONO, fg=ACCENT, bg=SURFACE, width=12)
-        storage_label.grid(row=7, column=1, sticky="w", padx=(0, 10), pady=5)
+        storage_label.grid(row=8, column=1, sticky="w", padx=(0, 10), pady=5)
         self.calculated_storage.trace('w', lambda *args: storage_label.config(text=self.calculated_storage.get()))
         
         # Buttons for database section
         db_btn_f = mk_frame(db_frame, bg=SURFACE)
-        db_btn_f.grid(row=8, column=0, columnspan=4, pady=(10, 0))
+        db_btn_f.grid(row=9, column=0, columnspan=4, pady=(10, 0))
         mk_btn(db_btn_f, "Add Camera", self.add_camera_from_database, style="primary").pack(side="left", padx=(0, 6))
         mk_btn(db_btn_f, "Update Selected", self.update_selected_camera, style="ghost").pack(side="left", padx=(0, 6))
         mk_btn(db_btn_f, "Delete Selected", self.delete_camera, style="danger").pack(side="left")
@@ -653,14 +677,14 @@ class CCTVApp:
         # Populate the dropdowns with the selected camera's values
         vals = self.tree.item(sel[0])["values"]
         if vals:
-            # Find the camera in the database to set codec and FPS
             camera_name = vals[0]
             if camera_name in self.camera_db:
+                # Find the camera type
+                cam_type = self.camera_db[camera_name].get("type", "All")
+                if cam_type in self.camera_types:
+                    self.selected_camera_type.set(cam_type)
                 self.selected_camera.set(camera_name)
-                # The trace will automatically update codec and FPS dropdowns
-                # Then we need to set quantity
                 self.camera_quantity.set(str(vals[1]))
-                # Mbps and storage will auto-update from the selections
 
     def delete_camera(self):
         for s in self.tree.selection():
@@ -1329,7 +1353,9 @@ class CCTVApp:
             excel_rows.append(("", "", "", "", "", "", "header", "VMS", None))
             # VMS row with brand
             excel_rows.append(("ADVASC01", 1, "", "Tyco - American Dynamics", "CCTV", "Software", "data", "", None))
-
+            excel_rows.append(("Workstation", 1, "ch", "", "CCTV", "Local", "data", "", None))
+            excel_rows.append(("Monitor", 1, "ch", "", "CCTV", "Local", "data", "", None))
+            
             current_row = 9
             
             # Track which rows are headers to only clear those
