@@ -1,8 +1,9 @@
 {
-  "Illustra Pro Gen4 32MP Multisensor IPR32-M13-OIA4": {
+  "Illustra Pro4 Multisensor Camera, 4x8MP (32MP), 3.6-11mm, TDN w/IR, AI, Micro USB, HDMI, PTR, TWDR, PoE90W/24VAC": {
     "sku": "IPR32-M13-OIA4",
     "brand": "Tyco - American Dynamics",
     "resolution": "3840x2160",
+    "type": "Multisensor",
     "throughputs": {
       "H264": {
         "12fps": 16.70,
@@ -20,10 +21,644 @@
       }
     }
   },
+  "Illustra Pro4 Multisensor Camera, 4x5MP (20MP), 2.7-13.5mm, TDN w/IR, AI, Micro USB, HDMI, PTR, TWDR, PoE90W/24VAC": {
+    "sku": "IPR20-M12-OIA4",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "2560x1920",
+    "type": "Multisensor",
+    "throughputs": {
+      "H264": {
+        "12fps": 16.16,
+        "15fps": 16.08,
+        "20fps": 16.74,
+        "25fps": 17.34,
+        "30fps": 17.26
+      },
+      "H265": {
+        "12fps": 6.06,
+        "15fps": 7.72,
+        "20fps": 12.80,
+        "25fps": 14.08,
+        "30fps": 15.22
+      }
+    }
+  },
+  "Illustra Pro4 Multisensor Camera, 4x8MP (32MP), 3.6-11mm, TDN w/IR, AI, Micro USB, HDMI, TWDR, PoE90W/24VAC": {
+    "sku": "IPS32-M13-OIA4",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "3840x2160",
+    "type": "Multisensor",
+    "throughputs": {
+      "H264": {
+        "12fps": 16.70,
+        "15fps": 17.04,
+        "20fps": 17.50,
+        "25fps": 18.02,
+        "30fps": 18.32
+      },
+      "H265": {
+        "12fps": 14.68,
+        "15fps": 14.54,
+        "20fps": 14.74,
+        "25fps": 14.48,
+        "30fps": 14.52
+      }
+    }
+  },
+  "Illustra Pro4 Multisensor Camera, 4x5MP (20MP), 2.7-13.5mm, TDN w/IR, AI, Micro USB, HDMI, TWDR, PoE90W/24VAC": {
+    "sku": "IPS20-M12-OIA4",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "2560x1920",
+    "type": "Multisensor",
+    "throughputs": {
+      "H264": {
+        "12fps": 16.16,
+        "15fps": 16.08,
+        "20fps": 16.74,
+        "25fps": 17.34,
+        "30fps": 17.26
+      },
+      "H265": {
+        "12fps": 6.06,
+        "15fps": 7.72,
+        "20fps": 12.80,
+        "25fps": 14.08,
+        "30fps": 15.22
+      }
+    }
+  },
+  "Illustra Pro4 Multisensor Camera, 4x8MP (32MP), 3.6-11mm, TDN, AI, Micro USB, HDMI, TWDR, PoE90W/24VAC": {
+    "sku": "IPS32-M13-OTA4",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "3840x2160",
+    "type": "Multisensor",
+    "throughputs": {
+      "H264": {
+        "12fps": 16.70,
+        "15fps": 17.04,
+        "20fps": 17.50,
+        "25fps": 18.02,
+        "30fps": 18.32
+      },
+      "H265": {
+        "12fps": 14.68,
+        "15fps": 14.54,
+        "20fps": 14.74,
+        "25fps": 14.48,
+        "30fps": 14.52
+      }
+    }
+  },
+  "Illustra Pro4 Multisensor Camera, 4x5MP (20MP), 2.7-13.5mm, TDN, AI, Micro USB, HDMI, TWDR, PoE90W/24VAC": {
+    "sku": "IPS20-M12-OTA4",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "2560x1920",
+    "type": "Multisensor",
+    "throughputs": {
+      "H264": {
+        "12fps": 16.16,
+        "15fps": 16.08,
+        "20fps": 16.74,
+        "25fps": 17.34,
+        "30fps": 17.26
+      },
+      "H265": {
+        "12fps": 6.06,
+        "15fps": 7.72,
+        "20fps": 12.80,
+        "25fps": 14.08,
+        "30fps": 15.22
+      }
+    }
+  },
+  "Illustra Pro Gen4, 8MP Bullet, 3.6-11mm, TDN, w/IR, Indoor/Outdoor": {
+    "sku": "IPS08-B13-OIA4",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "3840x2160",
+    "type": "Bullet",
+    "throughputs": {
+      "H264": {
+        "12fps": 4.18,
+        "15fps": 4.26,
+        "20fps": 4.38,
+        "25fps": 4.51,
+        "30fps": 4.58
+      },
+      "H265": {
+        "12fps": 3.67,
+        "15fps": 3.64,
+        "20fps": 3.69,
+        "25fps": 3.62,
+        "30fps": 3.63
+      }
+    }
+  },
+    "Illustra Pro Gen4, 8MP Bullet, 13-55mm, TDN, w/IR, Indoor/Outdoor": {
+    "sku": "IPS08-B16-OIA4",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "3840x2160",
+    "type": "Bullet",
+    "throughputs": {
+      "H264": {
+        "12fps": 4.18,
+        "15fps": 4.26,
+        "20fps": 4.38,
+        "25fps": 4.51,
+        "30fps": 4.58
+      },
+      "H265": {
+        "12fps": 3.67,
+        "15fps": 3.64,
+        "20fps": 3.69,
+        "25fps": 3.62,
+        "30fps": 3.63
+      }
+    }
+  },
+  "Illustra Pro Gen4 5MP LPR Dome, 2.7-13.5mm, TDN w/IR, Outdoor": {
+    "sku": "IPS04-D12-LPR4",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "2560x1920",
+    "type": "Dome",
+    "throughputs": {
+      "H264": {
+        "12fps": 4.04,
+        "15fps": 4.02,
+        "20fps": 4.19,
+        "25fps": 4.34,
+        "30fps": 4.32
+      },
+      "H265": {
+        "12fps": 1.52,
+        "15fps": 1.93,
+        "20fps": 3.20,
+        "25fps": 3.52,
+        "30fps": 3.81
+      }
+    }
+  },
+  "Illustra Pro Gen4 5MP LPR Bullet, 2.7-13.5mm, TDN w/IR, Outdoor": {
+    "sku": "IPS04-B12-LPR4",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "2560x1920",
+    "type": "Bullet",
+    "throughputs": {
+      "H264": {
+        "12fps": 4.04,
+        "15fps": 4.02,
+        "20fps": 4.19,
+        "25fps": 4.34,
+        "30fps": 4.32
+      },
+      "H265": {
+        "12fps": 1.52,
+        "15fps": 1.93,
+        "20fps": 3.20,
+        "25fps": 3.52,
+        "30fps": 3.81
+      }
+    }
+  },
+  "Illustra Pro Gen4, 4MP Bullet, 2.7.13.5mm, TDN, w/IR, Indoor/Outdoor": {
+    "sku": "IPS04-B12-OIA4",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "2560x1920",
+    "type": "Bullet",
+    "throughputs": {
+      "H264": {
+        "12fps": 4.04,
+        "15fps": 4.02,
+        "20fps": 4.19,
+        "25fps": 4.34,
+        "30fps": 4.32
+      },
+      "H265": {
+        "12fps": 1.52,
+        "15fps": 1.93,
+        "20fps": 3.20,
+        "25fps": 3.52,
+        "30fps": 3.81
+      }
+    }
+  },
+    "Illustra Pro Gen4, 4MP Bullet, 13-55mm, TDN, w/IR, Indoor/Outdoor": {
+    "sku": "IPS04-B16-OIA4",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "2560x1920",
+    "type": "Bullet",
+    "throughputs": {
+      "H264": {
+        "12fps": 4.04,
+        "15fps": 4.02,
+        "20fps": 4.19,
+        "25fps": 4.34,
+        "30fps": 4.32
+      },
+      "H265": {
+        "12fps": 1.52,
+        "15fps": 1.93,
+        "20fps": 3.20,
+        "25fps": 3.52,
+        "30fps": 3.81
+      }
+    }
+  },
+  "Illustra Pro Gen4, 2MP Bullet, 2.7.13.5mm, TDN, w/IR, Indoor/Outdoor": {
+    "sku": "IPS02-B12-OIA4",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "1920x1080",
+    "type": "Bullet",
+    "throughputs": {
+      "H264": {
+        "12fps": 1.15,
+        "15fps": 1.63,
+        "20fps": 1.96,
+        "25fps": 2.45,
+        "30fps": 3.27,
+        "50fps": 3.90,
+        "60fps": 4.09
+      },
+      "H265": {
+        "12fps": 3.27,
+        "15fps": 3.83,
+        "20fps": 3.85,
+        "25fps": 3.86,
+        "30fps": 3.87,
+        "50fps": 3.89,
+        "60fps": 3.94
+      }
+    }
+  },
+    "Illustra Pro Gen4, 2MP Bullet, 4.7-47mm, TDN, w/IR, Indoor/Outdoor": {
+    "sku": "IPS02-B15-OIA4",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "1920x1080",
+    "type": "Bullet",
+    "throughputs": {
+      "H264": {
+        "12fps": 1.15,
+        "15fps": 1.63,
+        "20fps": 1.96,
+        "25fps": 2.45,
+        "30fps": 3.27,
+        "50fps": 3.90,
+        "60fps": 4.09
+      },
+      "H265": {
+        "12fps": 3.27,
+        "15fps": 3.83,
+        "20fps": 3.85,
+        "25fps": 3.86,
+        "30fps": 3.87,
+        "50fps": 3.89,
+        "60fps": 3.94
+      }
+    }
+  },
+  "Illustra Pro Gen4 5MP Corner Camera, IK11, IP68, TDN w/IR, TWDR, White LED, Mic, Spk": {
+    "sku": "IPS05-R10-OIA4",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "2560x1920",
+    "type": "Corner",
+    "throughputs": {
+      "H264": {
+        "12fps": 4.11,
+        "15fps": 5.00,
+        "20fps": 5.34,
+        "25fps": 5.42,
+        "30fps": 5.59
+      },
+      "H265": {
+        "12fps": 3.42,
+        "15fps": 3.86,
+        "20fps": 3.84,
+        "25fps": 3.86,
+        "30fps": 3.99
+      }
+    }
+  },
+  "Illustra Pro Gen4 8MP MiniDome, 3.6-10mm, Indoor/Outdoor, Clear Bubble, IP67, IK10, TDN w/IR, TWDR": {
+    "sku": "IPS08-D13-OI04",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "3840x2160",
+    "type": "Dome",
+    "throughputs": {
+      "H264": {
+        "15fps": 5.86,
+        "20fps": 7.04,
+        "25fps": 8.21,
+        "30fps": 9.58
+      },
+      "H265": {
+        "15fps": 3.54,
+        "20fps": 4.06,
+        "25fps": 4.73,
+        "30fps": 5.85
+      }
+    }
+  },
+  "Illustra Pro Gen4 4MP MiniDome, 2.7-13.5mm, Indoor/Outdoor, Clear Bubble, IP67, IK10, TDN w/IR, TWDR": {
+    "sku": "IPS04-D12-OI04",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "2560x1920",
+    "type": "Dome",
+    "throughputs": {
+      "H264": {
+        "15fps": 3.28,
+        "20fps": 3.86,
+        "25fps": 4.46,
+        "30fps": 5.24
+      },
+      "H265": {
+        "15fps": 1.77,
+        "20fps": 2.07,
+        "25fps": 2.41,
+        "30fps": 2.88
+      }
+    }
+  },
+  "Illustra Pro Gen4 2MP MiniDome, 2.7-13.5mm, Indoor/Outdoor, Clear Bubble, IP67, IK10, TDN w/IR, TWDR": {
+    "sku": "IPS02-D12-OI04",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "1920x1080",
+    "type": "Dome",
+    "throughputs": {
+      "H264": {
+        "15fps": 1.99,
+        "20fps": 2.39,
+        "25fps": 2.70,
+        "30fps": 2.94
+      },
+      "H265": {
+        "15fps": 1.29,
+        "20fps": 1.55,
+        "25fps": 1.75,
+        "30fps": 1.89
+      }
+    }
+  },
+  "Illustra Pro Gen4 8MP PTZ 22X Outdoor": {
+    "sku": "IPS08-P25-OI04",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "3840x2160",
+    "type": "PTZ",
+    "throughputs": {
+      "H264": {
+        "12fps": 4.18,
+        "15fps": 4.26,
+        "20fps": 4.38,
+        "25fps": 4.51,
+        "30fps": 4.58
+      },
+      "H265": {
+        "12fps": 3.67,
+        "15fps": 3.64,
+        "20fps": 3.69,
+        "25fps": 3.62,
+        "30fps": 3.63
+      }
+    }
+  },
+   "Illustra Pro Gen4 8MP PTZ 22X Indoor": {
+    "sku": "IPS08-P25-RT04",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "3840x2160",
+    "type": "PTZ",
+    "throughputs": {
+      "H264": {
+        "12fps": 4.18,
+        "15fps": 4.26,
+        "20fps": 4.38,
+        "25fps": 4.51,
+        "30fps": 4.58
+      },
+      "H265": {
+        "12fps": 3.67,
+        "15fps": 3.64,
+        "20fps": 3.69,
+        "25fps": 3.62,
+        "30fps": 3.63
+      }
+    }
+  },
+  "Illustra Pro Gen4 2MP PTZ 42X Outdoor": {
+    "sku": "IPS02-P24-OI04",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "1920x1080",
+    "type": "PTZ",
+    "throughputs": {
+      "H264": {
+        "12fps": 3.65,
+        "15fps": 3.68,
+        "20fps": 3.61,
+        "25fps": 3.79,
+        "30fps": 3.84,
+        "50fps": 3.95,
+        "60fps": 3.96
+      },
+      "H265": {
+        "12fps": 3.27,
+        "15fps": 3.83,
+        "20fps": 3.85,
+        "25fps": 3.86,
+        "30fps": 3.87,
+        "50fps": 3.89,
+        "60fps": 3.94
+      }
+    }
+  },
+    "Illustra Pro Gen4 2MP PTZ 30X Outdoor": {
+    "sku": "IPS02-P07-RT04",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "1920x1080",
+    "type": "PTZ",
+    "throughputs": {
+      "H264": {
+        "12fps": 3.65,
+        "15fps": 3.68,
+        "20fps": 3.61,
+        "25fps": 3.79,
+        "30fps": 3.84,
+        "50fps": 3.95,
+        "60fps": 3.96
+      },
+      "H265": {
+        "12fps": 3.27,
+        "15fps": 3.83,
+        "20fps": 3.85,
+        "25fps": 3.86,
+        "30fps": 3.87,
+        "50fps": 3.89,
+        "60fps": 3.94
+      }
+    }
+  },
+  "Illustra Pro Gen4 12MP Fisheye, indoor/outdoor, vandal, TDN, w/IR, TWDR": {
+    "sku": "IPS12-F27-OIA4",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "2992x2992",
+    "type": "Fisheye",
+    "throughputs": {
+      "H264": {
+        "15fps": 5.21,
+        "20fps": 5.73,
+        "25fps": 6.18,
+        "30fps": 6.71
+      },
+      "H265": {
+        "15fps": 2.23,
+        "20fps": 2.47,
+        "25fps": 2.66,
+        "30fps": 2.89
+      }
+    }
+  },
+  "Illustra Flex Gen4 16MP Dual Sensor, MFZ 3.42-6.85mm, Edge AI, TWDR, TDN w/IR, IP66/67, IK10": {
+    "sku": "IFS16-M10-OIA4",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "3840x2160",
+    "type": "Dual Sensor",
+    "throughputs": {
+      "H264": {
+        "12fps": 10.21,
+        "15fps": 10.47
+      },
+      "H265": {
+        "12fps": 7.65,
+        "15fps": 7.65
+      }
+    }
+  },
+  "Illustra Flex Gen4 10MP Dual Sensor, MFZ 3.42-6.85mm, Edge AI, TWDR, TDN w/IR, IP66/67, IK10": {
+    "sku": "IFS10-M10-OIA4",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "2560x1920",
+    "type": "Dual Sensor",
+    "throughputs": {
+      "H264": {
+        "12fps": 8.12,
+        "15fps": 8.12,
+        "20fps": 8.12,
+        "25fps": 8.12,
+        "30fps": 8.12
+      },
+      "H265": {
+        "12fps": 3.12,
+        "15fps": 3.73,
+        "20fps": 4.59,
+        "25fps": 5.40,
+        "30fps": 6.50
+      }
+    }
+  },
+  "Illustra Flex Gen4 8MP/4K Minidome, Motorised 3.6-11mm, AI, TDN, TWDR, IK08, Indoor, Smoked Bubble": {
+    "sku": "IFS08-D13-ATB4",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "3840x2160",
+    "type": "Dome",
+    "throughputs": {
+      "H264": {
+        "12fps": 5.11,
+        "15fps": 5.24
+      },
+      "H265": {
+        "12fps": 3.83,
+        "15fps": 3.83
+      }
+    }
+  },
+  "Illustra Flex Gen4 8MP/4K Bullet, 3.6-11mm, AI, TDN w/IR, TWDR, EIS,  IP66/67, IK10": {
+    "sku": "IFS08-B13-OIB4",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "3840x2160",
+    "type": "Bullet",
+    "throughputs": {
+      "H264": {
+        "12fps": 5.11,
+        "15fps": 5.24
+      },
+      "H265": {
+        "12fps": 3.83,
+        "15fps": 3.83
+      }
+    }
+  },
+  "Illustra Flex Gen4 5MP Bullet, 2.7-13.5mm, AI, TDN w/IR, TWDR, EIS,  IP66/67, IK10": {
+    "sku": "IFS05-B12-OIB4",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "2560x1920",
+    "type": "Bullet",
+    "throughputs": {
+      "H264": {
+        "12fps": 4.06,
+        "15fps": 4.06,
+        "20fps": 4.06,
+        "25fps": 4.06,
+        "30fps": 4.06
+      },
+      "H265": {
+        "12fps": 1.56,
+        "15fps": 1.87,
+        "20fps": 2.30,
+        "25fps": 2.70,
+        "30fps": 3.25
+      }
+    }
+  },
+  "Illustra Flex Gen4 5MP Minidome, Motorised 2.7-13.5mm, AI, TDN w/IR, TWDR, EIS, IP66/67, IK10, Clear Bubble": {
+    "sku": "IFS05-D12-OIB4",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "2560x1920",
+    "type": "Dome",
+    "throughputs": {
+      "H264": {
+        "12fps": 4.06,
+        "15fps": 4.06,
+        "20fps": 4.06,
+        "25fps": 4.06,
+        "30fps": 4.06
+      },
+      "H265": {
+        "12fps": 1.56,
+        "15fps": 1.87,
+        "20fps": 2.30,
+        "25fps": 2.70,
+        "30fps": 3.25
+      }
+    }
+  },
+  "Illustra Flex Gen4 2MP Minidome, Motorised 2.7-13.5mm, AI, TDN, TWDR, IK08, Indoor, Smoked Bubble": {
+    "sku": "IFS02-D12-ATB4",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "1920x1080",
+    "type": "Dome",
+    "throughputs": {
+      "H264": {
+        "12fps": 1.79,
+        "15fps": 2.20,
+        "20fps": 2.84,
+        "25fps": 3.42,
+        "30fps": 3.97,
+        "50fps": 3.91,
+        "60fps": 3.91
+      },
+      "H265": {
+        "12fps": 1.42,
+        "15fps": 1.73,
+        "20fps": 2.22,
+        "25fps": 2.66,
+        "30fps": 3.08,
+        "50fps": 3.88,
+        "60fps": 3.86
+      }
+    }
+  }
+},
   "Illustra Standard 4MP IR Vandal Proof Dome N/W Camera, 2.8mm, 30M IR": {
     "sku": "ISE-V04F283S-N",
     "brand": "Tyco - Illustra Standard",
     "resolution": "2560x1440",
+    "type": "Dome",
     "throughputs": {
       "H265": {
         "15fps": 2.475,
@@ -37,6 +672,7 @@
     "sku": "ISE-V04F363S-N",
     "brand": "Tyco - Illustra Standard",
     "resolution": "2560x1440",
+    "type": "Dome",
     "throughputs": {
       "H265": {
         "15fps": 2.475,
@@ -50,6 +686,7 @@
     "sku": "ISE-B04F363S-N",
     "brand": "Tyco - Illustra Standard",
     "resolution": "2560x1440",
+    "type": "Bullet",
     "throughputs": {
       "H265": {
         "15fps": 2.475,
@@ -63,6 +700,7 @@
     "sku": "ISE-B04F363S-N",
     "brand": "Tyco - Illustra Standard",
     "resolution": "2560x1440",
+    "type": "Bullet",
     "throughputs": {
       "H265": {
         "15fps": 2.475,
@@ -76,6 +714,7 @@
     "sku": "ISE-T04V013S-N",
     "brand": "Tyco - Illustra Standard",
     "resolution": "2560x1440",
+    "type": "Bullet",
     "throughputs": {
       "H265": {
         "15fps": 2.475,
@@ -89,6 +728,7 @@
     "sku": "ISE-B04V013S-N",
     "brand": "Tyco - Illustra Standard",
     "resolution": "2560x1440",
+    "type": "Bullet",
     "throughputs": {
       "H265": {
         "15fps": 2.475,
