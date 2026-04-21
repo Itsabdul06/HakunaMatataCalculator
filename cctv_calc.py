@@ -1269,9 +1269,8 @@ class CCTVApp:
         self.res_txt.config(state="disabled")
 
     # ── PDF Export ──────────────────────────────────────────────────────────
-    # ── PDF Export ──────────────────────────────────────────────────────────
     def export_to_pdf(self):
-        """Export calculation results to PDF"""
+        """Export calculation results to PDF (without prices)"""
         if not self.last_calculation_result:
             messagebox.showwarning("Warning", "Run a calculation first before exporting!")
             return
@@ -1306,8 +1305,8 @@ class CCTVApp:
         
         try:
             # Create PDF document
-            doc = SimpleDocTemplate(pdf_file, pagesize=letter,
-                                   rightMargin=72, leftMargin=72,
+            doc = SimpleDocTemplate(pdf_file, pagesize=landscape(letter),
+                                   rightMargin=36, leftMargin=36,
                                    topMargin=72, bottomMargin=72)
             
             styles = getSampleStyleSheet()
@@ -1315,13 +1314,13 @@ class CCTVApp:
             heading_style = styles['Heading2']
             normal_style = styles['Normal']
             
-            # Create a custom style for cost
-            cost_style = ParagraphStyle(
-                'CostStyle',
+            # Create a custom style for wrapped text
+            wrapped_style = ParagraphStyle(
+                'WrappedStyle',
                 parent=styles['Normal'],
-                textColor=colors.green,
-                fontSize=14,
-                alignment=1  # Center alignment
+                fontSize=9,
+                leading=11,
+                wordWrap='CJK'
             )
             
             story = []
@@ -1330,28 +1329,25 @@ class CCTVApp:
             story.append(Paragraph("CCTV Design Report", title_style))
             story.append(Spacer(1, 0.25 * inch))
             story.append(Paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}", normal_style))
-            story.append(Spacer(1, 0.5 * inch))
-            
-            # Summary
-            total_cost = sum(u["cost"] for u in self.last_calculation_result["nvr_config"])
-            story.append(Paragraph(f"System Total: ${total_cost:,.2f}", cost_style))
-            story.append(Spacer(1, 0.5 * inch))
+            story.append(Spacer(1, 0.3 * inch))
             
             # Camera List
             story.append(Paragraph("Camera List", heading_style))
             story.append(Spacer(1, 0.1 * inch))
             
-            camera_data = [["Camera Name", "Quantity", "Mbps", "Storage (TB)"]]
+            camera_data = [["Camera Name", "Qty", "Mbps", "Storage (TB)"]]
             for cam in self.last_calculation_result["cameras"]:
-                # Convert all values to strings to avoid formatting issues
-                camera_name = str(cam[0])
+                # Camera name as Paragraph for wrapping
+                camera_name = Paragraph(str(cam[0]), wrapped_style)
                 quantity = str(cam[1])
+                
                 # Format mbps as string with 2 decimals
                 try:
                     mbps_val = float(cam[2])
                     mbps_str = f"{mbps_val:.2f}"
                 except (ValueError, TypeError):
                     mbps_str = str(cam[2])
+                
                 # Format storage as string with 2 decimals
                 try:
                     storage_val = float(cam[3])
@@ -1361,11 +1357,13 @@ class CCTVApp:
                 
                 camera_data.append([camera_name, quantity, mbps_str, storage_str])
             
-            camera_table = Table(camera_data, colWidths=[3*inch, 0.8*inch, 0.8*inch, 1*inch])
+            # Adjust column widths for better wrapping
+            camera_table = Table(camera_data, colWidths=[3.2*inch, 0.5*inch, 0.7*inch, 0.9*inch])
             camera_table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
                 ('FONTSIZE', (0, 0), (-1, 0), 10),
                 ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
@@ -1375,18 +1373,18 @@ class CCTVApp:
             story.append(camera_table)
             story.append(Spacer(1, 0.3 * inch))
             
-            # NVR Configuration
+            # NVR Configuration (without prices)
             story.append(Paragraph("NVR Configuration", heading_style))
             story.append(Spacer(1, 0.1 * inch))
             
-            nvr_data = [["Unit", "NVR Model", "Cameras", "Bandwidth", "Storage", "Cost"]]
+            nvr_data = [["Unit", "NVR Model", "Cameras", "Bandwidth", "Storage"]]
             for i, unit in enumerate(self.last_calculation_result["nvr_config"], 1):
                 nvr = unit["nvr"]
                 hdd = unit["hdd_config"]
                 
-                # Convert all values to strings safely
+                # NVR name as Paragraph for wrapping
+                nvr_name = Paragraph(str(nvr["Name"]), wrapped_style)
                 unit_num = str(i)
-                nvr_name = str(nvr["Name"])
                 camera_count = str(unit["camera_count"])
                 
                 # Format bandwidth
@@ -1404,30 +1402,18 @@ class CCTVApp:
                 except (ValueError, TypeError):
                     storage_str = str(hdd.get("qty", "?")) + " x " + str(hdd.get("cap", "?")) + " TB"
                 
-                # Format cost
-                try:
-                    cost_val = float(unit["cost"])
-                    cost_str = f"${cost_val:,.2f}"
-                except (ValueError, TypeError):
-                    cost_str = str(unit["cost"])
-                
-                nvr_data.append([unit_num, nvr_name, camera_count, bw_str, storage_str, cost_str])
+                nvr_data.append([unit_num, nvr_name, camera_count, bw_str, storage_str])
             
-            # Add total row
-            total_cost_str = f"${total_cost:,.2f}" if isinstance(total_cost, (int, float)) else str(total_cost)
-            nvr_data.append(["", "", "", "", "TOTAL:", total_cost_str])
-            
-            nvr_table = Table(nvr_data, colWidths=[0.6*inch, 2*inch, 0.8*inch, 1.2*inch, 1.2*inch, 1.2*inch])
+            nvr_table = Table(nvr_data, colWidths=[0.5*inch, 3*inch, 0.7*inch, 1.2*inch, 1.2*inch])
             nvr_table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
                 ('FONTSIZE', (0, 0), (-1, 0), 10),
                 ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-2, -2), colors.beige),
-                ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
-                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
                 ('GRID', (0, 0), (-1, -1), 1, colors.black),
             ]))
             story.append(nvr_table)
@@ -1443,7 +1429,7 @@ class CCTVApp:
             import traceback
             traceback.print_exc()
             messagebox.showerror("Error", f"Failed to create PDF:\n{str(e)}")
-    # ── Excel Export ──────────────────────────────────────────────────────
+        # ── Excel Export ──────────────────────────────────────────────────────
     def export_to_excel(self):
         if not self.last_calculation_result:
             messagebox.showwarning("Warning", "Run a calculation first before exporting!")
