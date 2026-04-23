@@ -653,7 +653,7 @@
       }
     }
   },
-  "Illustra Standard 4MP IR Vandal Proof Dome N/W Camera, 2.8mm, 30M IR": {
+  "Illustra Standard 4MP E-Series IR Vandal Proof Dome N/W Camera, 2.8mm, 30M IR": {
     "sku": "ISE-V04F283S-N",
     "brand": "Tyco - Illustra Standard",
     "resolution": "2560x1440",
@@ -667,7 +667,7 @@
       }
     }
   },
-  "Illustra Standard 4MP IR Vandal Proof Dome N/W Camera, 3.6mm, 30M IR": {
+  "Illustra Standard 4MP E-Series IR Vandal Proof Dome N/W Camera, 3.6mm, 30M IR": {
     "sku": "ISE-V04F363S-N",
     "brand": "Tyco - Illustra Standard",
     "resolution": "2560x1440",
@@ -681,7 +681,7 @@
       }
     }
   },
-  "Illustra Standard 4MP IR Bullet N/W Camera, 3.6mm, 50M IR": {
+  "Illustra Standard 4MP E-Series IR Bullet N/W Camera, 3.6mm, 50M IR": {
     "sku": "ISE-B04F363S-N",
     "brand": "Tyco - Illustra Standard",
     "resolution": "2560x1440",
@@ -695,7 +695,7 @@
       }
     }
   },
-  "Illustra Standard 4MP IR Bullet N/W Camera, 6mm, 50M IR": {
+  "Illustra Standard 4MP E-Series IR Bullet N/W Camera, 6mm, 50M IR": {
     "sku": "ISE-B04F363S-N",
     "brand": "Tyco - Illustra Standard",
     "resolution": "2560x1440",
@@ -709,11 +709,11 @@
       }
     }
   },
-  "Illustra Standard 4MP IR Turret Dome N/W Camera, 2.8-12mm Manual, 30M IR": {
+  "Illustra Standard 4MP E-Series IR Turret Dome N/W Camera, 2.8-12mm Manual, 30M IR": {
     "sku": "ISE-T04V013S-N",
     "brand": "Tyco - Illustra Standard",
     "resolution": "2560x1440",
-    "type": "Bullet",
+    "type": "Dome",
     "throughputs": {
       "H265": {
         "15fps": 2.475,
@@ -723,7 +723,7 @@
       }
     }
   },
-  "Illustra Standard 4MP IR Bullet N/W Camera, 2.8-12mm Manual, 50M IR": {
+  "Illustra Standard 4MP E-Series IR Bullet N/W Camera, 2.8-12mm Manual, 50M IR": {
     "sku": "ISE-B04V013S-N",
     "brand": "Tyco - Illustra Standard",
     "resolution": "2560x1440",
@@ -734,6 +734,254 @@
         "20fps": 2.825,
         "25fps": 3.12,
         "30fps": 3.45
+      }
+    }
+  },
+  "Illustra Standard 4MP IR E-Series Turret Dome N/W Camera, 2.8~12mm Motorized, 30M IR": {
+    "sku": "ISE-T04M013S-N",
+    "brand": "Tyco - Illustra Standard",
+    "resolution": "2560x1440",
+    "type": "Dome",
+    "throughputs": {
+      "H265": {
+        "15fps": 2.475,
+        "20fps": 2.825,
+        "25fps": 3.12,
+        "30fps": 3.45
+      }
+    }
+  },
+  "Illustra Standard 4MP E-Series IR Bullet N/W Camera, 2.8-12mm Motorized, 50M IR": {
+    "sku": "ISE-B04M013S-N",
+    "brand": "Tyco - Illustra Standard",
+    "resolution": "2560x1440",
+    "type": "Bullet",
+    "throughputs": {
+      "H265": {
+        "15fps": 2.475,
+        "20fps": 2.825,
+        "25fps": 3.12,
+        "30fps": 3.45
+      }
+    }
+  },
+  "Illustra Standard 4MP A-Series IR Bullet N/W Camera, 2.8-12mm Motorized, 70M IR": {
+    "sku": "ISA-B04M015S-N",
+    "brand": "Tyco - Illustra Standard",
+    "resolution": "2560x1440",
+    "type": "Bullet",
+    "throughputs": {
+      "H265": {
+        "15fps": 2.475,
+        "20fps": 2.825,
+        "25fps": 3.12,
+        "30fps": 3.45
+      }
+    }
+  },
+  "Illustra Standard 4MP A-Series IR Vandal Proof Dome N/W Camera, 2.8-12mm Motorized, 50M IR": {
+    "sku": "ISA-V04M015S-N",
+    "brand": "Tyco - Illustra Standard",
+    "resolution": "2560x1440",
+    "type": "Dome",
+    "throughputs": {
+      "H265": {
+        "15fps": 2.475,
+        "20fps": 2.825,
+        "25fps": 3.12,
+        "30fps": 3.45
+      }
+    }
+  },
+  "Illustra Standard 5MP E-Series IR Vandal Proof Dome N/W Camera, 2.8mm, 30M IR": {
+    "sku": "ISE-V05F283S-N",
+    "brand": "Tyco - Illustra Standard",
+    "resolution": "2592×1944",
+    "type": "Dome",
+    "throughputs": {
+      "H265": {
+        "15fps": 2.475,
+        "20fps": 2.825,
+        "25fps": 3.12,
+        "30fps": 3.45
+      }
+    }
+  },
+  "Illustra Standard 5MP E-Series IR Vandal Proof Dome N/W Camera, 3.6mm, 30M IR": {
+    "sku": "ISE-V05F363S-N",
+    "brand": "Tyco - Illustra Standard",
+    "resolution": "2592×1944",
+    "type": "Dome",
+    "throughputs": {
+      "H265": {
+        "15fps": 2.475,
+        "20fps": 2.825,
+        "25fps": 3.12,
+        "30fps": 3.45
+      }
+    }
+  },
+  "Illustra Standard 5MP E-Series IR Bullet N/W Camera, 3.6mm, 50M IR": {
+    "sku": "ISE-B05F363S-N",
+    "brand": "Tyco - Illustra Standard",
+    "resolution": "2592×1944",
+    "type": "Bullet",
+    "throughputs": {
+      "H265": {
+        "15fps": 2.475,
+        "20fps": 2.825,
+        "25fps": 3.12,
+        "30fps": 3.45
+      }
+    }
+  },
+  "Illustra Standard 5MP E-Series IR Bullet N/W Camera, 6mm, 50M IR": {
+    "sku": "ISE-B05F063S-N",
+    "brand": "Tyco - Illustra Standard",
+    "resolution": "2592×1944",
+    "type": "Bullet",
+    "throughputs": {
+      "H265": {
+        "15fps": 2.475,
+        "20fps": 2.825,
+        "25fps": 3.12,
+        "30fps": 3.45
+      }
+    }
+  },
+  "Illustra Standard 5MP V-Series Motorized V/F IR Bullet N/W Camera, 2.8-12mm, 70M IR": {
+    "sku": "ISV-B05M023S-N",
+    "brand": "Tyco - Illustra Standard",
+    "resolution": "2592×1944",
+    "type": "Bullet",
+    "throughputs": {
+      "H265": {
+        "15fps": 2.475,
+        "20fps": 2.825,
+        "25fps": 3.12,
+        "30fps": 3.45
+      }
+    }
+  },
+  "Illustra Standard 5MP V-Series Motorized V/F IR Vandal Proof Dome N/W Camera, 2.8-12mm, 50M IR": {
+    "sku": "ISV-V05M023S-N",
+    "brand": "Tyco - Illustra Standard",
+    "resolution": "2592×1944",
+    "type": "Dome",
+    "throughputs": {
+      "H265": {
+        "15fps": 2.475,
+        "20fps": 2.825,
+        "25fps": 3.12,
+        "30fps": 3.45
+      }
+    }
+  },
+  "Illustra Standard 2MP V-Series Manual V/F IR Vandal Proof Dome N/W Camera, 2.8-12mm, 30M IR": {
+    "sku": "ISV-D02V013S-N",
+    "brand": "Tyco - Illustra Standard",
+    "resolution": "1920x1080",
+    "type": "Dome",
+    "throughputs": {
+      "H265": {
+        "15fps": 2.475,
+        "20fps": 2.825,
+        "25fps": 3.12,
+        "30fps": 3.45
+      }
+    }
+  },
+  "Illustra Standard 2MP V-Series Motorized V/F IR Vandal Proof Dome N/W Camera, 2.8-12mm, 50M IR": {
+    "sku": "ISV-V02M013S-N",
+    "brand": "Tyco - Illustra Standard",
+    "resolution": "1920x1080",
+    "type": "Dome",
+    "throughputs": {
+      "H265": {
+        "15fps": 2.475,
+        "20fps": 2.825,
+        "25fps": 3.12,
+        "30fps": 3.45
+      }
+    }
+  },
+  "Illustra Standard 2MP A-Series Motorized V/F IR Vandal Proof Dome N/W Camera, 2.8-12mm, 50M IR": {
+    "sku": "ISA-V02M015S-N",
+    "brand": "Tyco - Illustra Standard",
+    "resolution": "1920x1080",
+    "type": "Dome",
+    "throughputs": {
+      "H265": {
+        "15fps": 2.475,
+        "20fps": 2.825,
+        "25fps": 3.12,
+        "30fps": 3.45
+      }
+    }
+  },
+  "Illustra Standard 2MP V-Series Motorized V/F IR Bullet N/W Camera, 2.8-12mm, 70M IR": {
+    "sku": "ISV-B02M013S-N",
+    "brand": "Tyco - Illustra Standard",
+    "resolution": "1920x1080",
+    "type": "Bullet",
+    "throughputs": {
+      "H265": {
+        "15fps": 2.475,
+        "20fps": 2.825,
+        "25fps": 3.12,
+        "30fps": 3.45
+      }
+    }
+  },
+  "Illustra Standard 2MP V-Series Motorized V/F IR Bullet N/W Camera, 7-22mm, 100M IR": {
+    "sku": "ISV-B02M023S-N",
+    "brand": "Tyco - Illustra Standard",
+    "resolution": "1920x1080",
+    "type": "Bullet",
+    "throughputs": {
+      "H265": {
+        "15fps": 2.475,
+        "20fps": 2.825,
+        "25fps": 3.12,
+        "30fps": 3.45
+      }
+    }
+  },
+  "Illustra Standard 2MP A-Series Motorized V/F IR Bullet N/W Camera, 2.8-12mm, 70M IR": {
+    "sku": "ISA-B02M015S-N",
+    "brand": "Tyco - Illustra Standard",
+    "resolution": "1920x1080",
+    "type": "Bullet",
+    "throughputs": {
+      "H265": {
+        "15fps": 2.475,
+        "20fps": 2.825,
+        "25fps": 3.12,
+        "30fps": 3.45
+      }
+    }
+  },
+  "Illustra Standard 8MP V-Series Motorized V/F IR Vandal Proof Dome N/W Camera, 2.8-12mm, 50M IR": {
+    "sku": "ISV-V08M012S-N",
+    "brand": "",
+    "resolution": "3840x2160",
+    "type": "Dome",
+    "throughputs": {
+      "H265": {
+        "12fps": 3.825,
+        "15fps": 3.825
+      }
+    }
+  },
+  "Illustra Standard 8MP V-Series Motorized V/F IR Bullet N/W Camera, 2.8-12mm, 70M IR": {
+    "sku": "ISV-B08M012S-N",
+    "brand": "",
+    "resolution": "3840x2160",
+    "type": "Bullet",
+    "throughputs": {
+      "H265": {
+        "12fps": 3.825,
+        "15fps": 3.825
       }
     }
   }
