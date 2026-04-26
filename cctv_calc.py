@@ -23,10 +23,9 @@ except ImportError:
 try:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import letter, landscape
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import inch
-    from reportlab.pdfgen import canvas
     PDF_AVAILABLE = True
 except ImportError:
     PDF_AVAILABLE = False
@@ -345,6 +344,7 @@ class CCTVApp:
         
         # UI Variables for camera entry
         self.selected_camera_type = tk.StringVar(value="All")
+        self.selected_resolution = tk.StringVar(value="All")
         self.selected_camera = tk.StringVar()
         self.selected_codec = tk.StringVar()
         self.selected_fps = tk.StringVar()
@@ -353,13 +353,21 @@ class CCTVApp:
         self.calculated_mbps = tk.StringVar(value="0.00")
         self.calculated_storage = tk.StringVar(value="0.00")
         
-        # Get unique camera types from database
-        self.camera_types = ["All"] + sorted(set(
-            cam.get("type", "Other") for cam in self.camera_db.values() if cam.get("type")
-        ))
+        # Get unique camera types and resolutions from database
+        types = set()
+        resolutions = set()
+        for cam_data in self.camera_db.values():
+            if cam_data.get("type"):
+                types.add(cam_data.get("type"))
+            if cam_data.get("resolution"):
+                resolutions.add(cam_data.get("resolution"))
+        
+        self.camera_types = ["All"] + sorted(types)
+        self.resolutions = ["All"] + sorted(resolutions, key=lambda x: [int(n) for n in x.split('x')] if 'x' in x else [0, 0])
         
         # Bind trace to update Mbps and Storage when selections change
         self.selected_camera_type.trace('w', self.update_camera_dropdown)
+        self.selected_resolution.trace('w', self.update_camera_dropdown)
         self.selected_camera.trace('w', self.update_codec_dropdown)
         self.selected_codec.trace('w', self.update_fps_dropdown)
         self.selected_fps.trace('w', self.update_mbps_and_storage)
@@ -443,18 +451,21 @@ class CCTVApp:
         self._build_nvr_tab(self.tabs[2])
         self._build_hdd_tab(self.tabs[3])
 
-    # ── Tab 1: Cameras (Database only with Type Filter) ────────────────────
+    # ── Tab 1: Cameras (Database with Type and Resolution Filters) ────────
     def update_camera_dropdown(self, *args):
-        """Update camera dropdown based on selected camera type"""
+        """Update camera dropdown based on selected camera type and resolution"""
         camera_type = self.selected_camera_type.get()
+        resolution = self.selected_resolution.get()
         
-        if camera_type == "All":
-            filtered_cameras = list(self.camera_db.keys())
-        else:
-            filtered_cameras = [
-                name for name, data in self.camera_db.items() 
-                if data.get("type", "") == camera_type
-            ]
+        filtered_cameras = []
+        for name, data in self.camera_db.items():
+            # Filter by type
+            if camera_type != "All" and data.get("type", "") != camera_type:
+                continue
+            # Filter by resolution
+            if resolution != "All" and data.get("resolution", "") != resolution:
+                continue
+            filtered_cameras.append(name)
         
         filtered_cameras.sort()
         
@@ -590,7 +601,7 @@ class CCTVApp:
     
     def _build_cameras_tab(self, tab):
         tab.columnconfigure(0, weight=1)
-        tab.rowconfigure(3, weight=1)
+        tab.rowconfigure(4, weight=1)
 
         # ─────────────────────────────────────────────────────────────────────
         # SECTION: Add Camera from Database
@@ -607,46 +618,52 @@ class CCTVApp:
         type_dropdown.grid(row=1, column=1, sticky="w", padx=(0, 10), pady=5)
         type_dropdown['values'] = self.camera_types
         
-        # Row 2: Camera Model
-        mk_label(db_frame, "Camera Model:", bg=SURFACE, fg=TEXT2).grid(row=2, column=0, sticky="w", padx=(14, 5), pady=5)
+        # Row 2: Resolution Filter
+        mk_label(db_frame, "Resolution:", bg=SURFACE, fg=TEXT2).grid(row=2, column=0, sticky="w", padx=(14, 5), pady=5)
+        resolution_dropdown = ttk.Combobox(db_frame, textvariable=self.selected_resolution, width=20, state="readonly")
+        resolution_dropdown.grid(row=2, column=1, sticky="w", padx=(0, 10), pady=5)
+        resolution_dropdown['values'] = self.resolutions
+        
+        # Row 3: Camera Model
+        mk_label(db_frame, "Camera Model:", bg=SURFACE, fg=TEXT2).grid(row=3, column=0, sticky="w", padx=(14, 5), pady=5)
         self.camera_dropdown = ttk.Combobox(db_frame, textvariable=self.selected_camera, width=50, state="readonly")
-        self.camera_dropdown.grid(row=2, column=1, columnspan=3, sticky="w", padx=(0, 10), pady=5)
+        self.camera_dropdown.grid(row=3, column=1, columnspan=3, sticky="w", padx=(0, 10), pady=5)
         
-        # Row 3: Codec
-        mk_label(db_frame, "Codec:", bg=SURFACE, fg=TEXT2).grid(row=3, column=0, sticky="w", padx=(14, 5), pady=5)
+        # Row 4: Codec
+        mk_label(db_frame, "Codec:", bg=SURFACE, fg=TEXT2).grid(row=4, column=0, sticky="w", padx=(14, 5), pady=5)
         self.codec_dropdown = ttk.Combobox(db_frame, textvariable=self.selected_codec, width=10, state="readonly")
-        self.codec_dropdown.grid(row=3, column=1, sticky="w", padx=(0, 10), pady=5)
+        self.codec_dropdown.grid(row=4, column=1, sticky="w", padx=(0, 10), pady=5)
         
-        # Row 4: FPS
-        mk_label(db_frame, "FPS:", bg=SURFACE, fg=TEXT2).grid(row=4, column=0, sticky="w", padx=(14, 5), pady=5)
+        # Row 5: FPS
+        mk_label(db_frame, "FPS:", bg=SURFACE, fg=TEXT2).grid(row=5, column=0, sticky="w", padx=(14, 5), pady=5)
         self.fps_dropdown = ttk.Combobox(db_frame, textvariable=self.selected_fps, width=10, state="readonly")
-        self.fps_dropdown.grid(row=4, column=1, sticky="w", padx=(0, 10), pady=5)
+        self.fps_dropdown.grid(row=5, column=1, sticky="w", padx=(0, 10), pady=5)
         
-        # Row 5: Quantity
-        mk_label(db_frame, "Quantity:", bg=SURFACE, fg=TEXT2).grid(row=5, column=0, sticky="w", padx=(14, 5), pady=5)
+        # Row 6: Quantity
+        mk_label(db_frame, "Quantity:", bg=SURFACE, fg=TEXT2).grid(row=6, column=0, sticky="w", padx=(14, 5), pady=5)
         qty_entry = mk_entry(db_frame, textvariable=self.camera_quantity, width=10)
-        qty_entry.grid(row=5, column=1, sticky="w", padx=(0, 10), pady=5)
+        qty_entry.grid(row=6, column=1, sticky="w", padx=(0, 10), pady=5)
         
-        # Row 6: Retention Days
-        mk_label(db_frame, "Retention Days:", bg=SURFACE, fg=TEXT2).grid(row=6, column=0, sticky="w", padx=(14, 5), pady=5)
+        # Row 7: Retention Days
+        mk_label(db_frame, "Retention Days:", bg=SURFACE, fg=TEXT2).grid(row=7, column=0, sticky="w", padx=(14, 5), pady=5)
         days_entry = mk_entry(db_frame, textvariable=self.retention_days, width=10)
-        days_entry.grid(row=6, column=1, sticky="w", padx=(0, 10), pady=5)
+        days_entry.grid(row=7, column=1, sticky="w", padx=(0, 10), pady=5)
         
-        # Row 7: Calculated Mbps
-        mk_label(db_frame, "Mbps (calculated):", bg=SURFACE, fg=TEXT2).grid(row=7, column=0, sticky="w", padx=(14, 5), pady=5)
+        # Row 8: Calculated Mbps
+        mk_label(db_frame, "Mbps (calculated):", bg=SURFACE, fg=TEXT2).grid(row=8, column=0, sticky="w", padx=(14, 5), pady=5)
         mbps_label = mk_label(db_frame, "", font=FONT_MONO, fg=ACCENT, bg=SURFACE, width=12)
-        mbps_label.grid(row=7, column=1, sticky="w", padx=(0, 10), pady=5)
+        mbps_label.grid(row=8, column=1, sticky="w", padx=(0, 10), pady=5)
         self.calculated_mbps.trace('w', lambda *args: mbps_label.config(text=self.calculated_mbps.get()))
         
-        # Row 8: Calculated Storage
-        mk_label(db_frame, "Storage TB/cam (calculated):", bg=SURFACE, fg=TEXT2).grid(row=8, column=0, sticky="w", padx=(14, 5), pady=5)
+        # Row 9: Calculated Storage
+        mk_label(db_frame, "Storage TB/cam (calculated):", bg=SURFACE, fg=TEXT2).grid(row=9, column=0, sticky="w", padx=(14, 5), pady=5)
         storage_label = mk_label(db_frame, "", font=FONT_MONO, fg=ACCENT, bg=SURFACE, width=12)
-        storage_label.grid(row=8, column=1, sticky="w", padx=(0, 10), pady=5)
+        storage_label.grid(row=9, column=1, sticky="w", padx=(0, 10), pady=5)
         self.calculated_storage.trace('w', lambda *args: storage_label.config(text=self.calculated_storage.get()))
         
         # Buttons for database section
         db_btn_f = mk_frame(db_frame, bg=SURFACE)
-        db_btn_f.grid(row=9, column=0, columnspan=4, pady=(10, 0))
+        db_btn_f.grid(row=10, column=0, columnspan=4, pady=(10, 0))
         mk_btn(db_btn_f, "Add Camera", self.add_camera_from_database, style="primary").pack(side="left", padx=(0, 6))
         mk_btn(db_btn_f, "Update Selected", self.update_selected_camera, style="ghost").pack(side="left", padx=(0, 6))
         mk_btn(db_btn_f, "Delete Selected", self.delete_camera, style="danger").pack(side="left")
@@ -687,8 +704,11 @@ class CCTVApp:
             camera_name = vals[0]
             if camera_name in self.camera_db:
                 cam_type = self.camera_db[camera_name].get("type", "All")
+                cam_res = self.camera_db[camera_name].get("resolution", "All")
                 if cam_type in self.camera_types:
                     self.selected_camera_type.set(cam_type)
+                if cam_res in self.resolutions:
+                    self.selected_resolution.set(cam_res)
                 self.selected_camera.set(camera_name)
                 self.camera_quantity.set(str(vals[1]))
 
@@ -840,7 +860,7 @@ class CCTVApp:
             self.progress_window.destroy()
         self.progress_window = None
 
-    # ── Tab 3: NVR Models ──────────────────────────────────────────────────
+    # ── Tab 3: NVR Models (Treeview with proper alignment) ──────────────────
     def _build_nvr_tab(self, tab):
         tab.columnconfigure(0, weight=1)
         tab.rowconfigure(1, weight=1)
@@ -1337,18 +1357,15 @@ class CCTVApp:
             
             camera_data = [["Camera Name", "Qty", "Mbps", "Storage (TB)"]]
             for cam in self.last_calculation_result["cameras"]:
-                # Camera name as Paragraph for wrapping
                 camera_name = Paragraph(str(cam[0]), wrapped_style)
                 quantity = str(cam[1])
                 
-                # Format mbps as string with 2 decimals
                 try:
                     mbps_val = float(cam[2])
                     mbps_str = f"{mbps_val:.2f}"
                 except (ValueError, TypeError):
                     mbps_str = str(cam[2])
                 
-                # Format storage as string with 2 decimals
                 try:
                     storage_val = float(cam[3])
                     storage_str = f"{storage_val:.2f}"
@@ -1357,7 +1374,6 @@ class CCTVApp:
                 
                 camera_data.append([camera_name, quantity, mbps_str, storage_str])
             
-            # Adjust column widths for better wrapping
             camera_table = Table(camera_data, colWidths=[3.2*inch, 0.5*inch, 0.7*inch, 0.9*inch])
             camera_table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
@@ -1382,19 +1398,16 @@ class CCTVApp:
                 nvr = unit["nvr"]
                 hdd = unit["hdd_config"]
                 
-                # NVR name as Paragraph for wrapping
                 nvr_name = Paragraph(str(nvr["Name"]), wrapped_style)
                 unit_num = str(i)
                 camera_count = str(unit["camera_count"])
                 
-                # Format bandwidth
                 try:
                     bw_val = float(unit["total_bandwidth"])
                     bw_str = f"{bw_val:.1f} Mbps"
                 except (ValueError, TypeError):
                     bw_str = str(unit["total_bandwidth"])
                 
-                # Format storage
                 try:
                     hdd_qty = int(hdd["qty"])
                     hdd_cap = float(hdd["cap"])
@@ -1429,7 +1442,8 @@ class CCTVApp:
             import traceback
             traceback.print_exc()
             messagebox.showerror("Error", f"Failed to create PDF:\n{str(e)}")
-        # ── Excel Export ──────────────────────────────────────────────────────
+
+    # ── Excel Export ──────────────────────────────────────────────────────
     def export_to_excel(self):
         if not self.last_calculation_result:
             messagebox.showwarning("Warning", "Run a calculation first before exporting!")
@@ -1482,8 +1496,10 @@ class CCTVApp:
             cameras = self.last_calculation_result["cameras"]
             nvr_config = self.last_calculation_result["nvr_config"]
 
-            # Group identical NVRs
+            # Group identical NVRs and detect brands
             nvr_groups = {}
+            has_exacq = False
+            
             for unit in nvr_config:
                 sku = unit["nvr"]["SKU"]
                 hdd_cap = unit["hdd_config"]["cap"]
@@ -1494,6 +1510,9 @@ class CCTVApp:
                     nvr_groups[key] = {"sku": sku, "hdd_cap": hdd_cap, "hdd_qty": hdd_qty, "count": 1, "brand": brand}
                 else:
                     nvr_groups[key]["count"] += 1
+                
+                if "Exacq" in brand:
+                    has_exacq = True
 
             # Prepare data rows
             excel_rows = []
@@ -1512,11 +1531,13 @@ class CCTVApp:
                 cam_sku = self.camera_db.get(cam_name, {}).get("sku", cam_name)
                 cam_brand = self.camera_db.get(cam_name, {}).get("brand", "")
                 excel_rows.append((cam_sku, cam_qty, "", cam_brand, "CCTV", "Camera", "data", "", None))
-                excel_rows.append(("ADVEC01", 1, "ch", "Tyco - American Dynamics", "CCTV", "Software", "data", "", None))
                 
-                # Get FPS and Retention for first camera
+                if has_exacq:
+                    excel_rows.append(("EVIP-01", 1, "ch", "Exacq", "CCTV", "Software", "data", "", None))
+                else:
+                    excel_rows.append(("ADVEC01", 1, "ch", "Tyco - American Dynamics", "CCTV", "Software", "data", "", None))
+                
                 if i == 0:
-                    # Try to get FPS from the selected_fps variable or from camera data
                     first_camera_fps = self.selected_fps.get() if self.selected_fps.get() else "30fps"
                     first_camera_retention = self.retention_days.get() if self.retention_days.get() else "30"
             
@@ -1529,15 +1550,21 @@ class CCTVApp:
             
             # VMS header
             excel_rows.append(("", "", "", "", "", "", "header", "VMS", None))
-            excel_rows.append(("ADVASC01", 1, "", "Tyco - American Dynamics", "CCTV", "Software", "data", "", None))
+            
+            if has_exacq:
+                excel_rows.append(("EXACQVMS", 1, "", "Exacq", "CCTV", "Software", "data", "", None))
+            else:
+                excel_rows.append(("ADVASC01", 1, "", "Tyco - American Dynamics", "CCTV", "Software", "data", "", None))
             
             # Add Workstation and Monitor rows
-            excel_rows.append(("Workstation", 1, "ch", "", "CCTV", "Local", "data", "", None))
-            excel_rows.append(("Monitor", 1, "ch", "", "CCTV", "Local", "data", "", None))
+            if has_exacq:
+                excel_rows.append(("Monitor", 1, "ch", "", "CCTV", "Local", "data", "", None))
+            else:
+                excel_rows.append(("Workstation", 1, "ch", "", "CCTV", "Local", "data", "", None))
+                excel_rows.append(("Monitor", 1, "ch", "", "CCTV", "Local", "data", "", None))
 
             current_row = 9
             
-            # Track which rows are headers to only clear those
             header_rows = []
             row_counter = current_row
             for row_data in excel_rows:
@@ -1545,11 +1572,9 @@ class CCTVApp:
                     header_rows.append(row_counter)
                 row_counter += 1
             
-            # ONLY clear the header rows
             for row in header_rows:
                 ws.range(f"A{row}:M{row}").value = None
 
-            # Write new data to offer sheet
             for row_data in excel_rows:
                 part_no, qty, sys, brand, solution, category, row_type, header_text, _ = row_data
                 
@@ -1584,7 +1609,6 @@ class CCTVApp:
                 if first_camera_retention:
                     override_sheet.range("Q6").value = int(first_camera_retention)
             except Exception:
-                # Override sheet doesn't exist - just skip
                 pass
 
             wb.save(output_file)
