@@ -327,7 +327,7 @@ def sep(parent, bg=BORDER, vertical=False):
 class CCTVApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("CCTV Master Calculator")
+        self.root.title("CCTV Master Calculator By Saher & Abdo")
         self.root.configure(bg=BG)
         self.root.geometry("1200x820")
         self.root.minsize(1000, 700)
@@ -433,7 +433,7 @@ class CCTVApp:
     def setup_ui(self):
         hdr = mk_frame(self.root, bg=BG)
         hdr.pack(fill="x", padx=24, pady=(18, 0))
-        mk_label(hdr, "CCTV Master Calculator", font=FONT_H1, fg=WHITE, bg=BG).pack(side="left")
+        mk_label(hdr, "CCTV Master Calculator By Saher & Abdo", font=FONT_H1, fg=WHITE, bg=BG).pack(side="left")
         mk_label(hdr, "  v37.0", font=FONT_BODY, fg=TEXT3, bg=BG).pack(side="left", pady=(6, 0))
         sep(self.root).pack(fill="x", padx=24, pady=10)
 
