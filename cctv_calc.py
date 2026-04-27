@@ -1123,7 +1123,13 @@ class CCTVApp:
         
         def worker():
             try:
-                result = self.auto_calculate_optimized(cameras)
+                # Check which mode is selected
+                if self.auto_mode.get() == "AUTO":
+                    result = self.auto_calculate_optimized(cameras)
+                else:
+                    # MANUAL mode - use selected NVRs from dropdowns
+                    result = self.manual_calculate(cameras)
+                
                 self.root.after(0, lambda: self._finish_calc(result))
             except Exception as e:
                 import traceback
@@ -1207,6 +1213,135 @@ class CCTVApp:
                     print(f"Error processing combo: {e}")
         
         return best_result
+    def manual_calculate(self, cameras):
+        """Manual calculation - uses user-selected NVRs"""
+        selected_nvrs = []
+        for combo in self.manual_combos:
+            nvr_name = combo.get()
+            if nvr_name != "None" and nvr_name:
+                nvr = next((n for n in self.nvr_list if n["Name"] == nvr_name), None)
+                if nvr:
+                    selected_nvrs.append(nvr)
+        
+        if not selected_nvrs:
+            messagebox.showwarning("Warning", "Select at least one NVR.")
+            return None
+        
+        # Get RAID mode
+        raid_mode = self.raid_var.get()
+        
+        # Calculate total requirements
+        total_cameras = sum(c[1] for c in cameras)
+        total_bandwidth = sum(c[1] * c[2] for c in cameras)
+        
+        # Quick feasibility check
+        total_channels = sum(nvr["CH"] for nvr in selected_nvrs)
+        if total_channels < total_cameras:
+            messagebox.showwarning("Warning", f"Selected NVRs have only {total_channels} channels, but you need {total_cameras} cameras.")
+            return None
+        
+        total_bandwidth_capacity = sum(nvr["MB"] for nvr in selected_nvrs)
+        if total_bandwidth_capacity < total_bandwidth:
+            messagebox.showwarning("Warning", f"Selected NVRs have only {total_bandwidth_capacity} Mbps bandwidth, but you need {total_bandwidth:.1f} Mbps.")
+            return None
+        
+        # Flatten cameras
+        flat_cams = []
+        for name, count, mbps, storage in cameras:
+            for _ in range(count):
+                flat_cams.append((name, mbps, storage))
+        
+        # Use the distribution function
+        return self.distribute_cameras_simple(cameras, selected_nvrs)
+        
+    def distribute_cameras_simple(self, cameras, nvrs):
+        """Simple camera distribution for manual mode"""
+        # Flatten cameras
+        flat_cams = []
+        for name, count, mbps, storage in cameras:
+            for _ in range(count):
+                flat_cams.append((name, mbps, storage))
+        
+        total_cams = len(flat_cams)
+        n_nvrs = len(nvrs)
+        
+        # Sort NVRs by bandwidth (smallest first) to put limited NVRs first
+        nvrs_sorted = sorted(enumerate(nvrs), key=lambda x: x[1]["MB"])
+        
+        # Calculate target cameras for each NVR
+        target_cams = [0] * n_nvrs
+        remaining = total_cams
+        
+        # First pass: allocate to smallest bandwidth NVRs first
+        for idx, nvr in nvrs_sorted:
+            if remaining <= 0:
+                break
+            
+            # Calculate average bandwidth of remaining cameras
+            avg_bandwidth = sum(c[1] for c in flat_cams[:remaining]) / remaining if remaining > 0 else 0
+            max_by_bandwidth = int(nvr["MB"] / avg_bandwidth) if avg_bandwidth > 0 else nvr["CH"]
+            max_for_nvr = min(nvr["CH"], max_by_bandwidth, remaining)
+            
+            if max_for_nvr > 0:
+                target_cams[idx] = max_for_nvr
+                remaining -= max_for_nvr
+        
+        # If we couldn't allocate all cameras, distribute remaining evenly
+        if remaining > 0:
+            for idx, nvr in enumerate(nvrs):
+                if remaining <= 0:
+                    break
+                if target_cams[idx] < nvr["CH"]:
+                    take = min(nvr["CH"] - target_cams[idx], remaining)
+                    target_cams[idx] += take
+                    remaining -= take
+        
+        if remaining > 0:
+            return None
+        
+        # Distribute cameras according to target
+        result = []
+        idx = 0
+        raid_mode = self.raid_var.get()
+        parity = 0 if raid_mode == "JBOD" else (1 if raid_mode == "RAID 5" else 2)
+        
+        for i, nvr in enumerate(nvrs):
+            take = target_cams[i]
+            if take <= 0:
+                continue
+            
+            cam_slice = flat_cams[idx:idx + take]
+            idx += take
+            
+            total_storage = sum(c[2] for c in cam_slice)
+            total_bandwidth = sum(c[1] for c in cam_slice)
+            
+            # Check bandwidth limit
+            if total_bandwidth > nvr["MB"]:
+                return None
+            
+            # Get HDD configuration
+            hdd = get_best_hdd_cached(total_storage, nvr["Slots"], parity, self.hdd_prices)
+            if hdd is None:
+                return None
+            
+            # Count camera types
+            cam_counts = {}
+            for c in cam_slice:
+                cam_counts[c[0]] = cam_counts.get(c[0], 0) + 1
+            
+            result.append({
+                "nvr": nvr,
+                "cameras": cam_slice,
+                "camera_count": take,
+                "cam_breakdown": cam_counts,
+                "total_storage": total_storage,
+                "total_bandwidth": total_bandwidth,
+                "hdd_config": hdd,
+                "cost": nvr["Price"] + hdd["cost"]
+            })
+        
+        return result if idx == total_cams else None
     
     def filter_dominated_nvrs(self, nvrs):
         filtered = []
