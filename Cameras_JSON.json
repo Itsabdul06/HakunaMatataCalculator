@@ -679,6 +679,28 @@
       }
     }
   },
+  "Illustra Flex Gen4 5MP PTZ , Outdoor": {
+    "sku": "IFS04-P07-OIA4",
+    "brand": "Tyco - American Dynamics",
+    "resolution": "2560x1920",
+    "type": "PTZ",
+    "throughputs": {
+      "H264": {
+        "12fps": 4.06,
+        "15fps": 4.06,
+        "20fps": 4.06,
+        "25fps": 4.06,
+        "30fps": 4.06
+      },
+      "H265": {
+        "12fps": 1.56,
+        "15fps": 1.87,
+        "20fps": 2.30,
+        "25fps": 2.70,
+        "30fps": 3.25
+      }
+    }
+  },
   "Illustra Standard 4MP E-Series IR Vandal Proof Dome N/W Camera, 2.8mm, 30M IR": {
     "sku": "ISE-V04F283S-N",
     "brand": "Tyco - Illustra Standard",
