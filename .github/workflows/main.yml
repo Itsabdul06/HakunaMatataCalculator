@@ -81,7 +81,6 @@ jobs:
           --hidden-import=webdriver_manager.chrome \
           --hidden-import=selenium.webdriver.common.options \
           --collect-all webdriver_manager \
-          --add-data "path/to/chromedriver;." \
           --collect-all=xlwings `
           $pythonFile
     
