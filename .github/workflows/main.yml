@@ -37,8 +37,6 @@ jobs:
         pip install pyinstaller
         pip install xlwings
         pip install reportlab
-        pip install selenium
-        pip install beautifulsoup4
     
     - name: List files for debugging
       run: |
@@ -77,10 +75,6 @@ jobs:
           --hidden-import=win32api `
           --hidden-import=win32con `
           --hidden-import=win32com.client `
-          --hidden-import=webdriver_manager \
-          --hidden-import=webdriver_manager.chrome \
-          --hidden-import=selenium.webdriver.common.options \
-          --collect-all webdriver_manager \
           --collect-all=xlwings `
           $pythonFile
     
