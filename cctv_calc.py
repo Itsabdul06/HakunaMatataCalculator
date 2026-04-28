@@ -86,6 +86,6 @@ def scrape_amazon_selenium(keyword: str, domain: str = "ae", pages: int = 1):
     return all_products
 
 # Run the scraper for Amazon.ae
-data = scrape_amazon_selenium("smartwatch", "ae", pages=2)
+data = scrape_amazon_selenium("WD Purple", "ae", pages=2)
 df = pd.DataFrame(data)
 print(df)
