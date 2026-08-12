@@ -313,8 +313,21 @@ class QuoteWizardApp:
         # Remove the loading label (it will be replaced later)
         self.loading_label.pack_forget()
 
-        left_frame = ttk.Frame(self.root, padding=10)
+        # Container that actually owns both panels, so grid geometry management
+        # is unambiguous (each panel's real Tk parent is the widget laying it out).
+        container = ttk.Frame(self.root)
+        container.pack(fill=tk.BOTH, expand=True)
+        container.columnconfigure(0, weight=1, minsize=380)
+        container.columnconfigure(1, weight=2)
+        container.rowconfigure(0, weight=1)
+
+        left_frame = ttk.Frame(container, padding=10)
+        left_frame.grid(row=0, column=0, sticky="nsew")
         self.left_frame = left_frame
+
+        right_frame = ttk.Frame(container, padding=10)
+        right_frame.grid(row=0, column=1, sticky="nsew")
+        self.right_frame = right_frame
 
         self.notebook = ttk.Notebook(left_frame)
         self.notebook.pack(fill=tk.BOTH, expand=True)
@@ -348,9 +361,6 @@ class QuoteWizardApp:
                                    bg="#f8f5ef", fg="#4a453d", font=("Courier", 10),
                                    padx=5, pady=5, relief=tk.GROOVE)
         self.calc_label.pack(fill=tk.BOTH, pady=(10, 0))
-
-        right_frame = ttk.Frame(self.root, padding=10)
-        self.right_frame = right_frame
 
         # Toolbar
         toolbar = ttk.Frame(right_frame)
@@ -405,12 +415,6 @@ class QuoteWizardApp:
 
         ttk.Label(right_frame, text="Right‑click a row to delete it.",
                   foreground="gray", font=("", 9)).pack(anchor=tk.W, pady=(5, 0))
-
-        # Paned window to hold left and right
-        pw = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
-        pw.pack(fill=tk.BOTH, expand=True)
-        pw.add(left_frame, weight=1)
-        pw.add(right_frame, weight=2)
 
     def _build_agent_tab(self, parent: ttk.Frame, label: str, sys_id: str):
         frame = ttk.Frame(parent, padding=10)
