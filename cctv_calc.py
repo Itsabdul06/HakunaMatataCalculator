@@ -254,6 +254,18 @@ class QuoteWizardApp:
         self.root.geometry("1200x720")
         self.root.minsize(1000, 600)
 
+        # Force a theme that Tk draws entirely itself (no native OS theming, no
+        # extra files). The default 'vista' theme on Windows relies on native
+        # Common-Controls-v6 theming, which needs an application manifest that
+        # PyInstaller doesn't add by default -- in frozen builds this can leave
+        # every ttk widget (Notebook, Treeview, Buttons, etc.) failing to draw
+        # at all, even though plain tk widgets still render fine.
+        style = ttk.Style(self.root)
+        try:
+            style.theme_use('clam')
+        except tk.TclError:
+            pass
+
         # We'll build the UI step by step inside a try block
         self.quote: List[dict] = []
         self._uid_counter = itertools.count(1)
@@ -285,6 +297,12 @@ class QuoteWizardApp:
                 )
             else:
                 self._status_label.config(text="✔ openpyxl available – Excel export enabled.", foreground="green")
+
+            # Force an explicit repaint. Frozen (PyInstaller) builds on Windows sometimes
+            # never receive an initial paint/expose event, leaving the window blank/white
+            # until the user manually resizes it. Nudging the geometry forces Tk to redraw.
+            self.root.update_idletasks()
+            self.root.geometry(self.root.geometry())
         except Exception:
             # Show the full traceback in a messagebox
             messagebox.showerror("Startup Error",
