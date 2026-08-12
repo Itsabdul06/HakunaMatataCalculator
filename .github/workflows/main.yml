@@ -45,7 +45,7 @@ jobs:
         pyinstaller --onedir `
           --name="Fire_Suppression_Quote_Wizard" `
           --collect-all=openpyxl `
-          quote_wizard.py
+          cctv_calc.py
 
     - name: Verify build
       run: |
