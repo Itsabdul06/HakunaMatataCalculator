@@ -2,7 +2,7 @@
 """
 Fire Suppression Quote Wizard – Python GUI Edition
 Ported from the original Excel VBA macros.
-Requires: openpyxl (pip install openpyxl) for Excel export.
+Requires: xlwings (pip install xlwings) + a local Excel install for export.
 """
 
 import tkinter as tk
@@ -14,12 +14,14 @@ import traceback
 from typing import List, Dict, Optional
 
 # ── Optional dependency ───────────────────────
+# Uses xlwings (drives real Excel via COM) instead of openpyxl, so exporting
+# never rewrites the template file structure -- Excel Tables, conditional
+# formatting extensions, and print areas in the template are left untouched.
 try:
-    import openpyxl
-    from openpyxl.styles import Font, PatternFill
-    HAS_OPENPYXL = True
+    import xlwings as xw
+    EXCEL_AVAILABLE = True
 except ImportError:
-    HAS_OPENPYXL = False
+    EXCEL_AVAILABLE = False
 
 # ── Engineering calculations ──────────────────
 def ceil(x: float) -> int:
@@ -246,6 +248,26 @@ SYSTEM_HEADER1 = {
     "co2hygood": "Hygood (LPG) CO2 Systems - VdS Approved",
 }
 
+def _xlwings_last_data_row(ws) -> int:
+    """Return the last row that actually contains a value.
+
+    Excel's own UsedRange (what xlwings' used_range reports) can be inflated
+    by rows that only ever had formatting applied but no real content --
+    common in polished company templates, and it doesn't shrink even after
+    content is deleted. Trusting it directly can push appended data hundreds
+    of rows below anything visible. Scan upward from the reported last row
+    for the first row with a real value instead.
+    """
+    try:
+        last = ws.used_range.last_cell.row
+    except Exception:
+        last = 1
+    for r in range(last, 0, -1):
+        row_vals = ws.range(f"A{r}:M{r}").value
+        if row_vals and any(v not in (None, "") for v in row_vals):
+            return r
+    return 0
+
 # ── Main Application ──────────────────────────
 class QuoteWizardApp:
     def __init__(self, root: tk.Tk):
@@ -269,7 +291,7 @@ class QuoteWizardApp:
         # We'll build the UI step by step inside a try block
         self.quote: List[dict] = []
         self._uid_counter = itertools.count(1)
-        self.template_workbook = None
+        self.template_path = None
         self.template_filename = None
 
         self.ws_toggle = tk.BooleanVar(value=True)
@@ -290,13 +312,13 @@ class QuoteWizardApp:
             self._update_display()
             # Remove loading label
             self.loading_label.destroy()
-            if not HAS_OPENPYXL:
+            if not EXCEL_AVAILABLE:
                 self._status_label.config(
-                    text="⚠ openpyxl not installed – Excel export disabled. Run: pip install openpyxl",
+                    text="⚠ xlwings not installed – Excel export disabled. Run: pip install xlwings",
                     foreground="red"
                 )
             else:
-                self._status_label.config(text="✔ openpyxl available – Excel export enabled.", foreground="green")
+                self._status_label.config(text="✔ xlwings available – Excel export enabled.", foreground="green")
 
             # Force an explicit repaint. Frozen (PyInstaller) builds on Windows sometimes
             # never receive an initial paint/expose event, leaving the window blank/white
@@ -366,7 +388,7 @@ class QuoteWizardApp:
         toolbar = ttk.Frame(right_frame)
         toolbar.pack(fill=tk.X, pady=(0, 10))
 
-        export_state = tk.NORMAL if HAS_OPENPYXL else tk.DISABLED
+        export_state = tk.NORMAL if EXCEL_AVAILABLE else tk.DISABLED
         self.export_btn = ttk.Button(toolbar, text="⬇ Export to Excel (Offer tab)",
                                      command=self._on_export, state=export_state)
         self.export_btn.pack(side=tk.LEFT, padx=2)
@@ -641,89 +663,120 @@ class QuoteWizardApp:
 
     # ── Excel export ───────────────────────────
     def _on_load_template(self):
-        if not HAS_OPENPYXL:
-            messagebox.showinfo("Missing Module", "openpyxl is required.\nInstall with: pip install openpyxl")
+        if not EXCEL_AVAILABLE:
+            messagebox.showinfo("Missing Module", "Excel export requires xlwings.\nInstall with: pip install xlwings")
             return
         path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx;*.xlsm")])
         if not path:
             return
-        try:
-            self.template_workbook = openpyxl.load_workbook(path)
-            self.template_filename = os.path.basename(path)
-            self._status_label.config(
-                text=f"Template loaded: {self.template_filename} – export will append to its 'Offer' tab.",
-                foreground="blue"
-            )
-        except Exception as e:
-            messagebox.showerror("Error", f"Could not read template file.\n{e}")
+        self.template_path = path
+        self.template_filename = os.path.basename(path)
+        self._status_label.config(
+            text=f"Template loaded: {self.template_filename} – export will append to its 'Offer' tab.",
+            foreground="blue"
+        )
 
     def _on_export(self):
         if not self.quote:
             messagebox.showinfo("Empty Quote", "Add at least one package first.")
             return
-        if not HAS_OPENPYXL:
-            messagebox.showinfo("Missing Module", "openpyxl is required.\nInstall with: pip install openpyxl")
+        if not EXCEL_AVAILABLE:
+            messagebox.showinfo("Missing Module", "Excel export requires xlwings.\nInstall with: pip install xlwings")
             return
 
-        rows = self._apply_toggles()
-        try:
-            wb = self.template_workbook or openpyxl.Workbook()
-            if "Offer" in wb.sheetnames:
-                sheet = wb["Offer"]
-                start_row = sheet.max_row + 2
-            else:
-                sheet = wb.create_sheet("Offer")
-                start_row = 1
+        template_path = self.template_path
+        if not template_path:
+            template_path = filedialog.askopenfilename(
+                title="Select Excel Template",
+                filetypes=[("Excel files", "*.xlsx;*.xlsm")])
+            if not template_path:
+                return
 
-            r = start_row
-            for row in rows:
-                excel_row = sheet.row_dimensions[r]
-                if row.get("type") == "header1":
-                    cell = sheet.cell(row=r, column=7, value=row["text"])
-                    cell.font = Font(bold=True, size=13, color="FFFFFF")
-                    cell.fill = PatternFill(start_color="1B2430", end_color="1B2430", fill_type="solid")
-                    for col_idx in range(4, 14):
-                        sheet.cell(row=r, column=col_idx).fill = PatternFill(
-                            start_color="1B2430", end_color="1B2430", fill_type="solid")
-                    excel_row.height = 22
-                elif row.get("type") == "header2":
-                    cell = sheet.cell(row=r, column=7, value=row["text"])
-                    cell.font = Font(bold=True, size=11)
-                    cell.fill = PatternFill(start_color="E7E0D2", end_color="E7E0D2", fill_type="solid")
-                    excel_row.height = 18
-                elif row.get("type") == "intro":
-                    cell = sheet.cell(row=r, column=7, value=row["text"])
-                    cell.font = Font(bold=True)
-                elif row.get("type") == "section":
-                    cell = sheet.cell(row=r, column=6, value=row["text"])
-                    cell.font = Font(italic=True, color="999999")
-                else:
-                    sheet.cell(row=r, column=4, value=row.get("D", ""))
-                    sheet.cell(row=r, column=6, value=row.get("F", ""))
-                    sheet.cell(row=r, column=8, value=row.get("H", ""))
-                    sheet.cell(row=r, column=11, value=row.get("K", ""))
-                    sheet.cell(row=r, column=12, value=row.get("L", ""))
-                    sheet.cell(row=r, column=13, value=row.get("M", ""))
-                r += 1
-
-            if not self.template_workbook:
-                sheet.column_dimensions['D'].width = 22
-                sheet.column_dimensions['F'].width = 16
-                sheet.column_dimensions['G'].width = 40
-                sheet.column_dimensions['H'].width = 8
-                sheet.column_dimensions['K'].width = 8
-                sheet.column_dimensions['L'].width = 6
-                sheet.column_dimensions['M'].width = 16
-
-            out_path = filedialog.asksaveasfilename(
+        save_as_new = messagebox.askyesno(
+            "Save Option",
+            "Yes = Save as a new file\nNo = Overwrite the template file")
+        output_path = template_path
+        if save_as_new:
+            output_path = filedialog.asksaveasfilename(
                 defaultextension=".xlsx",
                 filetypes=[("Excel files", "*.xlsx")],
                 initialfile=self.template_filename or "Fire_Suppression_Offer.xlsx"
             )
-            if out_path:
-                wb.save(out_path)
-                messagebox.showinfo("Export Done", f"Offer sheet exported to {out_path}")
+            if not output_path:
+                return
+
+        rows = self._apply_toggles()
+
+        app = None
+        wb = None
+        try:
+            app = xw.App(visible=False, add_book=False)
+            wb = app.books.open(template_path)
+
+            sheet_name = None
+            for name in wb.sheet_names:
+                if name.lower() == "offer":
+                    sheet_name = name
+                    break
+            if not sheet_name:
+                raise Exception('Sheet "Offer" was not found in this template.')
+
+            ws = wb.sheets[sheet_name]
+            start_row = _xlwings_last_data_row(ws) + 2
+
+            r = start_row
+            for row in rows:
+                rtype = row.get("type")
+                if rtype == "header1":
+                    ws.range(f"G{r}").value = row["text"]
+                    ws.range(f"D{r}:M{r}").color = (27, 36, 48)
+                    ws.range(f"G{r}").font.color = (255, 255, 255)
+                    ws.range(f"G{r}").font.bold = True
+                    ws.range(f"G{r}").font.size = 13
+                    ws.range(f"{r}:{r}").row_height = 22
+                elif rtype == "header2":
+                    ws.range(f"G{r}").value = row["text"]
+                    ws.range(f"G{r}").color = (231, 224, 210)
+                    ws.range(f"G{r}").font.bold = True
+                    ws.range(f"G{r}").font.size = 11
+                    ws.range(f"{r}:{r}").row_height = 18
+                elif rtype == "intro":
+                    ws.range(f"G{r}").value = row["text"]
+                    ws.range(f"G{r}").font.bold = True
+                elif rtype == "section":
+                    ws.range(f"F{r}").value = row["text"]
+                    ws.range(f"F{r}").font.italic = True
+                else:
+                    if row.get("D", "") != "":
+                        ws.range(f"D{r}").value = row.get("D", "")
+                    if row.get("F", "") != "":
+                        ws.range(f"F{r}").value = row.get("F", "")
+                    if row.get("H", "") != "":
+                        ws.range(f"H{r}").value = row.get("H", "")
+                    if row.get("K", "") != "":
+                        ws.range(f"K{r}").value = row.get("K", "")
+                    if row.get("L", "") != "":
+                        ws.range(f"L{r}").value = row.get("L", "")
+                    if row.get("M", "") != "":
+                        ws.range(f"M{r}").value = row.get("M", "")
+                r += 1
+
+            wb.save(output_path)
+            wb.close()
+            app.quit()
+            messagebox.showinfo("Export Done", f"Offer sheet exported to {output_path}")
+
         except Exception as e:
+            try:
+                if wb is not None:
+                    wb.close()
+            except Exception:
+                pass
+            try:
+                if app is not None:
+                    app.quit()
+            except Exception:
+                pass
             messagebox.showerror("Export Error", str(e))
 
 
