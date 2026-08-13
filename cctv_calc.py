@@ -257,6 +257,11 @@ OFFER_DATA_START_ROW = 9
 # cells, so this stays comfortably above that with margin.
 F_COLUMN_GAP_CHECK = 5
 
+# How far below OFFER_DATA_START_ROW to bulk-read column F when hunting for
+# the last real part number. Generous on purpose -- it's a single COM call
+# either way, so there's no real cost to scanning a wide range.
+F_COLUMN_SCAN_ROWS = 5000
+
 # ── Main Application ──────────────────────────
 class QuoteWizardApp:
     def __init__(self, root: tk.Tk):
@@ -797,40 +802,40 @@ class QuoteWizardApp:
     def _last_f_row(self, ws) -> int:
         """Row of the last real part-number row in column F.
 
-        A plain jump-to-last-nonblank-cell (Ctrl+Up) can be fooled by merged
-        header cells or a stray leftover value far below the real data. So:
-        1. Get a starting candidate via Ctrl+Up-from-bottom.
-        2. Check the F_COLUMN_GAP_CHECK rows below it. Normal header gaps in
-           this template are at most 2 empty cells, so a run this long being
-           empty confirms the candidate is really the last part number.
-        3. If any of those rows has a value instead, that's a further block
-           of data past a gap -- jump the candidate to the last populated
-           row in that window and repeat the check from there.
+        Deliberately does NOT use Excel's End(xlUp)/Ctrl+Up: when a column
+        belongs to an Excel Table (a ListObject -- e.g. this template's
+        "TQuotation" table), End(xlUp) snaps to the Table's outer boundary
+        rather than the true last populated cell, even across a long run of
+        genuinely blank cells inside the Table body. That produced wrong
+        results here (jumping to the bottom of a table that extends far
+        past the real data).
+
+        Instead, read column F as one bulk block of actual values and scan
+        it directly. A candidate "last part number" row is only trusted
+        once F_COLUMN_GAP_CHECK consecutive rows after it are confirmed
+        empty (normal header gaps in this template are at most ~2 blank
+        rows) -- otherwise treat whatever's found next as more real data
+        and keep scanning past it.
         """
+        scan_end = OFFER_DATA_START_ROW + F_COLUMN_SCAN_ROWS
         try:
-            total_rows = ws.api.Rows.Count
-            candidate = ws.range(f"F{total_rows}").end('up').row
+            vals = ws.range(f"F{OFFER_DATA_START_ROW}:F{scan_end}").value
         except Exception:
             return OFFER_DATA_START_ROW - 1
+        if not isinstance(vals, list):
+            vals = [vals]
 
-        if candidate < OFFER_DATA_START_ROW:
-            # Column F is empty -- nothing exported to this file yet.
-            return OFFER_DATA_START_ROW - 1
+        last_row = OFFER_DATA_START_ROW - 1
+        for i, val in enumerate(vals):
+            if val in (None, ""):
+                continue
+            row = OFFER_DATA_START_ROW + i
+            window = vals[i + 1: i + 1 + F_COLUMN_GAP_CHECK]
+            if all(v in (None, "") for v in window):
+                return row
+            last_row = row  # more data follows within the gap window -- keep going
 
-        while True:
-            window_vals = ws.range(
-                f"F{candidate + 1}:F{candidate + F_COLUMN_GAP_CHECK}").value
-            if not isinstance(window_vals, list):
-                window_vals = [window_vals]
-
-            found_row = None
-            for offset, val in enumerate(window_vals, start=1):
-                if val not in (None, ""):
-                    found_row = candidate + offset
-
-            if found_row is None:
-                return candidate
-            candidate = found_row
+        return last_row
 
 
 # ── Entry point with robust error handling ────
