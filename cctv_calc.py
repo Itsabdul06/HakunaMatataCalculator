@@ -252,6 +252,11 @@ SYSTEM_HEADER1 = {
 # template's fixed header/title block. Matches the CCTV export tool's layout.
 OFFER_DATA_START_ROW = 9
 
+# Number of rows to check below a candidate "last part number" row before
+# trusting it. Normal header gaps in this template are at most 2 empty
+# cells, so this stays comfortably above that with margin.
+F_COLUMN_GAP_CHECK = 5
+
 # ── Main Application ──────────────────────────
 class QuoteWizardApp:
     def __init__(self, root: tk.Tk):
@@ -376,6 +381,10 @@ class QuoteWizardApp:
         self.export_btn = ttk.Button(toolbar, text="⬇ Export to Excel (Offer tab)",
                                      command=self._on_export, state=export_state)
         self.export_btn.pack(side=tk.LEFT, padx=2)
+
+        self.continue_btn = ttk.Button(toolbar, text="⤵ Continue Offer",
+                                       command=self._on_continue_offer, state=export_state)
+        self.continue_btn.pack(side=tk.LEFT, padx=2)
 
         self.load_btn = ttk.Button(toolbar, text="Use my template file…",
                                    command=self._on_load_template, state=export_state)
@@ -645,6 +654,61 @@ class QuoteWizardApp:
         messagebox.showinfo("Cannot delete",
                             "This row was added by a toggle. Uncheck the toggle to remove it.")
 
+    def _write_offer_rows(self, ws, rows, start_row: int) -> int:
+        """Write the quote rows into the Offer sheet starting at start_row.
+        Returns the row number one past the last row written."""
+        r = start_row
+        for row in rows:
+            rtype = row.get("type")
+            if rtype == "header1":
+                ws.range(f"G{r}").value = row["text"]
+                ws.range(f"D{r}:M{r}").color = (27, 36, 48)
+                ws.range(f"G{r}").font.color = (255, 255, 255)
+                ws.range(f"G{r}").font.bold = True
+                ws.range(f"G{r}").font.size = 13
+                ws.range(f"{r}:{r}").row_height = 22
+            elif rtype == "header2":
+                ws.range(f"G{r}").value = row["text"]
+                ws.range(f"G{r}").color = (231, 224, 210)
+                ws.range(f"G{r}").font.bold = True
+                ws.range(f"G{r}").font.size = 11
+                ws.range(f"{r}:{r}").row_height = 18
+            elif rtype == "intro":
+                ws.range(f"G{r}").value = row["text"]
+                ws.range(f"G{r}").font.bold = True
+            elif rtype == "section":
+                ws.range(f"F{r}").value = row["text"]
+                ws.range(f"F{r}").font.italic = True
+            else:
+                if row.get("D", "") != "":
+                    ws.range(f"D{r}").value = row.get("D", "")
+                if row.get("F", "") != "":
+                    ws.range(f"F{r}").value = row.get("F", "")
+                if row.get("H", "") != "":
+                    ws.range(f"H{r}").value = row.get("H", "")
+                if row.get("K", "") != "":
+                    ws.range(f"K{r}").value = row.get("K", "")
+                if row.get("L", "") != "":
+                    ws.range(f"L{r}").value = row.get("L", "")
+                if row.get("M", "") != "":
+                    ws.range(f"M{r}").value = row.get("M", "")
+            r += 1
+        return r
+
+    def _find_offer_sheet(self, wb):
+        for name in wb.sheet_names:
+            if name.lower() == "offer":
+                return wb.sheets[name]
+        raise Exception('Sheet "Offer" was not found in this file.')
+
+    def _resolve_template_path(self, dialog_title: str):
+        path = self.template_path
+        if not path:
+            path = filedialog.askopenfilename(
+                title=dialog_title,
+                filetypes=[("Excel files", "*.xlsx;*.xlsm")])
+        return path
+
     # ── Excel export ───────────────────────────
     def _on_load_template(self):
         if not EXCEL_AVAILABLE:
@@ -660,7 +724,10 @@ class QuoteWizardApp:
             foreground="blue"
         )
 
-    def _on_export(self):
+    def _export_common(self, dialog_title: str, get_start_row):
+        """Shared flow for Export and Continue Offer: resolve the file, open
+        it via xlwings, locate the Offer sheet, compute the start row with
+        the given strategy, write the current quote, and save."""
         if not self.quote:
             messagebox.showinfo("Empty Quote", "Add at least one package first.")
             return
@@ -668,17 +735,13 @@ class QuoteWizardApp:
             messagebox.showinfo("Missing Module", "Excel export requires xlwings.\nInstall with: pip install xlwings")
             return
 
-        template_path = self.template_path
+        template_path = self._resolve_template_path(dialog_title)
         if not template_path:
-            template_path = filedialog.askopenfilename(
-                title="Select Excel Template",
-                filetypes=[("Excel files", "*.xlsx;*.xlsm")])
-            if not template_path:
-                return
+            return
 
         save_as_new = messagebox.askyesno(
             "Save Option",
-            "Yes = Save as a new file\nNo = Overwrite the template file")
+            "Yes = Save as a new file\nNo = Overwrite the file")
         output_path = template_path
         if save_as_new:
             output_path = filedialog.asksaveasfilename(
@@ -696,59 +759,15 @@ class QuoteWizardApp:
         try:
             app = xw.App(visible=False, add_book=False)
             wb = app.books.open(template_path)
+            ws = self._find_offer_sheet(wb)
 
-            sheet_name = None
-            for name in wb.sheet_names:
-                if name.lower() == "offer":
-                    sheet_name = name
-                    break
-            if not sheet_name:
-                raise Exception('Sheet "Offer" was not found in this template.')
-
-            ws = wb.sheets[sheet_name]
-            start_row = OFFER_DATA_START_ROW
-
-            r = start_row
-            for row in rows:
-                rtype = row.get("type")
-                if rtype == "header1":
-                    ws.range(f"G{r}").value = row["text"]
-                    ws.range(f"D{r}:M{r}").color = (27, 36, 48)
-                    ws.range(f"G{r}").font.color = (255, 255, 255)
-                    ws.range(f"G{r}").font.bold = True
-                    ws.range(f"G{r}").font.size = 13
-                    ws.range(f"{r}:{r}").row_height = 22
-                elif rtype == "header2":
-                    ws.range(f"G{r}").value = row["text"]
-                    ws.range(f"G{r}").color = (231, 224, 210)
-                    ws.range(f"G{r}").font.bold = True
-                    ws.range(f"G{r}").font.size = 11
-                    ws.range(f"{r}:{r}").row_height = 18
-                elif rtype == "intro":
-                    ws.range(f"G{r}").value = row["text"]
-                    ws.range(f"G{r}").font.bold = True
-                elif rtype == "section":
-                    ws.range(f"F{r}").value = row["text"]
-                    ws.range(f"F{r}").font.italic = True
-                else:
-                    if row.get("D", "") != "":
-                        ws.range(f"D{r}").value = row.get("D", "")
-                    if row.get("F", "") != "":
-                        ws.range(f"F{r}").value = row.get("F", "")
-                    if row.get("H", "") != "":
-                        ws.range(f"H{r}").value = row.get("H", "")
-                    if row.get("K", "") != "":
-                        ws.range(f"K{r}").value = row.get("K", "")
-                    if row.get("L", "") != "":
-                        ws.range(f"L{r}").value = row.get("L", "")
-                    if row.get("M", "") != "":
-                        ws.range(f"M{r}").value = row.get("M", "")
-                r += 1
+            start_row = get_start_row(ws)
+            self._write_offer_rows(ws, rows, start_row)
 
             wb.save(output_path)
             wb.close()
             app.quit()
-            messagebox.showinfo("Export Done", f"Offer sheet exported to {output_path}")
+            messagebox.showinfo("Done", f"Offer sheet updated starting at row {start_row}.\nSaved to {output_path}")
 
         except Exception as e:
             try:
@@ -762,6 +781,56 @@ class QuoteWizardApp:
             except Exception:
                 pass
             messagebox.showerror("Export Error", str(e))
+
+    def _on_export(self):
+        self._export_common(
+            "Select Excel Template",
+            lambda ws: OFFER_DATA_START_ROW
+        )
+
+    def _on_continue_offer(self):
+        self._export_common(
+            "Select Existing Offer File",
+            lambda ws: self._last_f_row(ws) + 1
+        )
+
+    def _last_f_row(self, ws) -> int:
+        """Row of the last real part-number row in column F.
+
+        A plain jump-to-last-nonblank-cell (Ctrl+Up) can be fooled by merged
+        header cells or a stray leftover value far below the real data. So:
+        1. Get a starting candidate via Ctrl+Up-from-bottom.
+        2. Check the F_COLUMN_GAP_CHECK rows below it. Normal header gaps in
+           this template are at most 2 empty cells, so a run this long being
+           empty confirms the candidate is really the last part number.
+        3. If any of those rows has a value instead, that's a further block
+           of data past a gap -- jump the candidate to the last populated
+           row in that window and repeat the check from there.
+        """
+        try:
+            total_rows = ws.api.Rows.Count
+            candidate = ws.range(f"F{total_rows}").end('up').row
+        except Exception:
+            return OFFER_DATA_START_ROW - 1
+
+        if candidate < OFFER_DATA_START_ROW:
+            # Column F is empty -- nothing exported to this file yet.
+            return OFFER_DATA_START_ROW - 1
+
+        while True:
+            window_vals = ws.range(
+                f"F{candidate + 1}:F{candidate + F_COLUMN_GAP_CHECK}").value
+            if not isinstance(window_vals, list):
+                window_vals = [window_vals]
+
+            found_row = None
+            for offset, val in enumerate(window_vals, start=1):
+                if val not in (None, ""):
+                    found_row = candidate + offset
+
+            if found_row is None:
+                return candidate
+            candidate = found_row
 
 
 # ── Entry point with robust error handling ────
