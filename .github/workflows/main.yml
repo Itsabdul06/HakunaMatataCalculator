@@ -51,7 +51,7 @@ jobs:
           --hidden-import=win32con `
           --hidden-import=win32com.client `
           --collect-all=xlwings `
-          quote_wizard.py
+          cctv_calc.py
 
     - name: Verify build
       run: |
