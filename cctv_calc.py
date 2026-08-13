@@ -248,25 +248,9 @@ SYSTEM_HEADER1 = {
     "co2hygood": "Hygood (LPG) CO2 Systems - VdS Approved",
 }
 
-def _xlwings_last_data_row(ws) -> int:
-    """Return the last row that actually contains a value.
-
-    Excel's own UsedRange (what xlwings' used_range reports) can be inflated
-    by rows that only ever had formatting applied but no real content --
-    common in polished company templates, and it doesn't shrink even after
-    content is deleted. Trusting it directly can push appended data hundreds
-    of rows below anything visible. Scan upward from the reported last row
-    for the first row with a real value instead.
-    """
-    try:
-        last = ws.used_range.last_cell.row
-    except Exception:
-        last = 1
-    for r in range(last, 0, -1):
-        row_vals = ws.range(f"A{r}:M{r}").value
-        if row_vals and any(v not in (None, "") for v in row_vals):
-            return r
-    return 0
+# First writable data row on the "Offer" sheet -- rows above this are the
+# template's fixed header/title block. Matches the CCTV export tool's layout.
+OFFER_DATA_START_ROW = 9
 
 # ── Main Application ──────────────────────────
 class QuoteWizardApp:
@@ -722,7 +706,7 @@ class QuoteWizardApp:
                 raise Exception('Sheet "Offer" was not found in this template.')
 
             ws = wb.sheets[sheet_name]
-            start_row = _xlwings_last_data_row(ws) + 2
+            start_row = OFFER_DATA_START_ROW
 
             r = start_row
             for row in rows:
